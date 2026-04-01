@@ -16,7 +16,7 @@ def check_password():
     VALID_PASSWORD = "240909"
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
-        
+    
     if not st.session_state["password_correct"]:
         st.markdown("<h2 style='text-align: center; margin-top: 50px;'>🔒 私人内测，请输入邀请码</h2>", unsafe_allow_html=True)
         pwd = st.text_input("邀请码", type="password", key="pwd_input")
@@ -104,8 +104,8 @@ with st.sidebar:
 
 if api_key:
     genai.configure(api_key=api_key)
-    # 使用最稳定且支持多模态识图的高速模型
-    model = genai.GenerativeModel('gemini-2.0-flash') 
+    # 使用最新最强的 Gemini 3.1 Pro 模型
+    model = genai.GenerativeModel('gemini-3.1-pro') 
 else:
     st.warning("👈 请先在左侧输入您的 GOOGLE_API_KEY 来激活 AI 引擎。")
     st.stop()
