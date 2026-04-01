@@ -110,10 +110,12 @@ def load_data(path):
         return {}
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            content = f.read().strip()
+            if not content:  # 应对文件存在但是空白的情况
+                return {}
+            return json.loads(content)
     except json.JSONDecodeError:
-        # 如果文件是 0KB 或者损坏了，直接返回空字典，防止程序崩溃！
-        return {}
+        return {}  # 应对文件内容不是合法 JSON 的情况
 
 def save_data(data, path):
     json.dump(data, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=4)
