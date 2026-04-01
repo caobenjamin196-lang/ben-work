@@ -100,7 +100,7 @@ with st.sidebar:
     input_key = st.text_input("配置 Google API Key", type="password", value=api_key if api_key else "")
     if input_key and input_key != api_key:
         api_key = input_key
-        try:
+       try:
             with open(".env", "w") as f: 
                 f.write(f'GOOGLE_API_KEY="{api_key}"\n')
             st.success("API Key 已保存！")
@@ -109,9 +109,10 @@ with st.sidebar:
 
 if api_key:
     genai.configure(api_key=api_key)
-    # 直接使用你专属节点的 3.1 Pro 最强模型
-    model = genai.GenerativeModel('gemini-3.1-pro') 
+    # 使用你节点上真实存在的 3.1 Pro 旗舰视觉模型
+    model = genai.GenerativeModel('gemini-3.1-pro-preview')
 else:
+    # 这一段必须保留！拦截没填 Key 的情况
     st.warning("👈 请先在左侧输入您的 GOOGLE_API_KEY 来激活 AI 引擎。")
     st.stop()
 
