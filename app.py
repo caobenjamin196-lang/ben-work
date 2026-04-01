@@ -13,7 +13,7 @@ st.set_page_config(page_title="🍏 AI 减脂与营养监督", layout="wide", in
 # ================= 访问权限控制 =================
 def check_password():
     # 设定你的专属邀请码
-    VALID_PASSWORD = "6688"
+    VALID_PASSWORD = "240909"
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
         
