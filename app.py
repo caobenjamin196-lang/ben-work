@@ -100,7 +100,7 @@ with st.sidebar:
     input_key = st.text_input("配置 Google API Key", type="password", value=api_key if api_key else "")
     if input_key and input_key != api_key:
         api_key = input_key
-       try:
+        try:
             with open(".env", "w") as f: 
                 f.write(f'GOOGLE_API_KEY="{api_key}"\n')
             st.success("API Key 已保存！")
@@ -109,10 +109,9 @@ with st.sidebar:
 
 if api_key:
     genai.configure(api_key=api_key)
-    # 使用你节点上真实存在的 3.1 Pro 旗舰视觉模型
-    model = genai.GenerativeModel('gemini-3.1-pro-preview')
+    # ================= 🚨 精准命中节点可用模型 =================
+    model = genai.GenerativeModel('gemini-3.1-pro-preview') 
 else:
-    # 这一段必须保留！拦截没填 Key 的情况
     st.warning("👈 请先在左侧输入您的 GOOGLE_API_KEY 来激活 AI 引擎。")
     st.stop()
 
@@ -126,13 +125,10 @@ def load_data(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
             content = f.read().strip()
-            # 如果文件为空字符串，返回空字典
             if not content:
                 return {}
-            # 尝试解析 JSON
             return json.loads(content)
-    # 无论是 JSON 错误还是文件读写错误，都静默返回空字典，绝对不让页面崩溃
-    except (json.JSONDecodeError, ValueError, Exception):
+    except Exception:
         return {}
 
 def save_data(data, path):
