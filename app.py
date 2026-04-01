@@ -2,66 +2,85 @@ import streamlit as st
 import json
 import os
 import datetime
+import re
 import google.generativeai as genai
 from PIL import Image
 
-# ================= 自定义 CSS 美化 =================
+# ================= 🚨 修复致命错误 =================
+# st.set_page_config 必须是整个脚本的第一个 Streamlit 命令，不能被任何界面代码拦截！
 st.set_page_config(page_title="🍏 AI 减脂与营养监督", layout="wide", initial_sidebar_state="expanded")
 
+# ================= 访问权限控制 =================
+def check_password():
+    # 设定你的专属邀请码
+    VALID_PASSWORD = "6688"
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+        
+    if not st.session_state["password_correct"]:
+        st.markdown("<h2 style='text-align: center; margin-top: 50px;'>🔒 私人内测，请输入邀请码</h2>", unsafe_allow_html=True)
+        pwd = st.text_input("邀请码", type="password", key="pwd_input")
+        if st.button("🔑 进入系统"):
+            if pwd == VALID_PASSWORD:
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("邀请码错误！")
+        return False
+    return True
+
+# 拦截所有没密码的人
+if not check_password():
+    st.stop()
+
+# ================= 自定义 CSS 美化 =================
 st.markdown("""
 <style>
-    /* =============== 终极开源线条小狗背景 ================ */
-    /* 使用稳定的 Github Raw 或者是稳定的开源图床 */
-    div.stApp {
-        background: url("https://raw.githubusercontent.com/openclaw/openclaw/main/docs/static/dog.png") no-repeat center center fixed !important;
-        background-color: #f7f9fc !important; /* 如果图片加载不出，至少有个底色 */
-        background-size: cover !important;
-    }
-    
-    /* 强行穿透所有的内层遮挡板 */
-    .stApp > header {
-        background-color: transparent !important;
-    }
-    
-    .stApp .main .block-container {
-        /* 中间卡片变成半透明毛玻璃 */
-        background: rgba(255, 255, 255, 0.85) !important;
-        border-radius: 20px !important;
-        padding: 3rem 2rem !important;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15) !important;
-        backdrop-filter: blur(12px) !important;
-        -webkit-backdrop-filter: blur(12px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.3) !important;
-        max-width: 1200px !important;
-        margin-top: 2rem !important;
-    }
-    
-    /* 确保侧边栏不会挡住主背景 */
-    section[data-testid="stSidebar"] {
-        background-color: rgba(255, 255, 255, 0.95) !important;
-    }
-    
-    /* 优化顶部指标看板 */
-    div[data-testid="stMetricValue"] { color: #10b981; font-weight: bold; }
-    
-    /* 让主按钮变得更醒目和容易点击 */
-    .stButton > button {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white; border: none; border-radius: 8px;
-        padding: 0.6rem 1rem; font-weight: 600; width: 100%;
-        transition: all 0.3s ease;
-    }
-    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 5px 10px -3px rgba(16,185,129,0.3); color: white;}
-    
-    /* 提示信息框 */
-    .budget-info {
-        background-color: #e0f2fe; color: #0369a1; padding: 12px 16px;
-        border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
-        border-left: 4px solid #0ea5e9;
-    }
+ /* =============== 终极开源线条小狗背景 ================ */
+ div.stApp {
+     background: url("https://raw.githubusercontent.com/openclaw/openclaw/main/docs/static/dog.png") no-repeat center center fixed !important;
+     background-color: #f7f9fc !important;
+     background-size: cover !important;
+ }
+ 
+ /* 强行穿透所有的内层遮挡板 */
+ .stApp > header { background-color: transparent !important; }
+ 
+ .stApp .main .block-container {
+     background: rgba(255, 255, 255, 0.85) !important;
+     border-radius: 20px !important;
+     padding: 3rem 2rem !important;
+     box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15) !important;
+     backdrop-filter: blur(12px) !important;
+     -webkit-backdrop-filter: blur(12px) !important;
+     border: 1px solid rgba(255, 255, 255, 0.3) !important;
+     max-width: 1200px !important;
+     margin-top: 2rem !important;
+ }
+ 
+ section[data-testid="stSidebar"] {
+     background-color: rgba(255, 255, 255, 0.95) !important;
+ }
+ 
+ div[data-testid="stMetricValue"] { color: #10b981; font-weight: bold; }
+ 
+ .stButton > button {
+     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+     color: white; border: none; border-radius: 8px;
+     padding: 0.6rem 1rem; font-weight: 600; width: 100%;
+     transition: all 0.3s ease;
+ }
+ .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 5px 10px -3px rgba(16,185,129,0.3); color: white;}
+ 
+ .budget-info {
+     background-color: #e0f2fe; color: #0369a1; padding: 12px 16px;
+     border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
+     border-left: 4px solid #0ea5e9;
+ }
 </style>
 """, unsafe_allow_html=True)
 
+# ================= API Key 配置 =================
 api_key = os.environ.get("GOOGLE_API_KEY")
 if not api_key and os.path.exists(".env"):
     with open(".env", "r") as f:
@@ -79,22 +98,25 @@ with st.sidebar:
     input_key = st.text_input("配置 Google API Key", type="password", value=api_key if api_key else "")
     if input_key and input_key != api_key:
         api_key = input_key
-        with open(".env", "w") as f: f.write(f'GOOGLE_API_KEY="{api_key}"\n')
+        with open(".env", "w") as f: 
+            f.write(f'GOOGLE_API_KEY="{api_key}"\n')
         st.success("API Key 已保存！")
 
 if api_key:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    # 使用最稳定且支持多模态识图的高速模型
+    model = genai.GenerativeModel('gemini-2.0-flash') 
 else:
-    model = None
     st.warning("👈 请先在左侧输入您的 GOOGLE_API_KEY 来激活 AI 引擎。")
     st.stop()
 
+# ================= 数据持久化 =================
 USERS_FILE = "users.json"
 RECORDS_FILE = "records.json"
 
 def load_data(path):
     return json.load(open(path, "r", encoding="utf-8")) if os.path.exists(path) else {}
+
 def save_data(data, path):
     json.dump(data, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=4)
 
@@ -103,9 +125,11 @@ records = load_data(RECORDS_FILE)
 
 def calculate_tdee(gender, weight, height, age, activity):
     bmr = 10*weight + 6.25*height - 5*age + (5 if gender=="男" else -161)
-    tdee = int(bmr * {"几乎不运动 (坐办公室)": 1.2, "轻度活动 (日常走动)": 1.375, "中度活动 (体力劳动)": 1.55}.get(activity, 1.2))
+    activity_multiplier = {"几乎不运动 (坐办公室)": 1.2, "轻度活动 (日常走动)": 1.375, "中度活动 (体力劳动)": 1.55}.get(activity, 1.2)
+    tdee = int(bmr * activity_multiplier)
     return tdee, tdee - 400
 
+# ================= 侧边栏用户档案 =================
 with st.sidebar:
     st.markdown("---")
     st.header("👤 档案与目标")
@@ -115,9 +139,12 @@ with st.sidebar:
     if selected_user == "➕ 新建身体档案...":
         with st.form("new_user_form"):
             new_name = st.text_input("如何称呼您？")
-            gender, height = st.selectbox("性别", ["男", "女"]), st.number_input("身高 (cm)", 100, 250, 170)
-            age, weight = st.number_input("年龄", 10, 100, 25), st.number_input("体重 (kg)", 30, 200, 65)
+            gender = st.selectbox("性别", ["男", "女"])
+            height = st.number_input("身高 (cm)", 100, 250, 170)
+            age = st.number_input("年龄", 10, 100, 25)
+            weight = st.number_input("体重 (kg)", 30, 200, 65)
             activity = st.selectbox("日常活动量", ["几乎不运动 (坐办公室)", "轻度活动 (日常走动)", "中度活动 (体力劳动)"])
+            
             if st.form_submit_button("💾 生成方案") and new_name:
                 tdee, target = calculate_tdee(gender, weight, height, age, activity)
                 users[new_name] = {"gender": gender, "age": age, "height": height, "weight": weight, "activity": activity, "tdee": tdee, "target": target}
@@ -131,14 +158,18 @@ if not users:
     st.info("👋 欢迎！请先在左侧建立身体档案。")
     st.stop()
 
+# ================= 主界面功能 =================
 if selected_user and selected_user != "➕ 新建身体档案...":
     today_str = str(datetime.date.today())
-    if selected_user not in records: records[selected_user] = {}
+    if selected_user not in records: 
+        records[selected_user] = {}
     if today_str not in records[selected_user]:
         records[selected_user][today_str] = {"breakfast": None, "lunch": None, "dinner": None, "exercise": None, "daily_nutrition_analysis": None}
     
     daily = records[selected_user][today_str]
-    target, u_weight, u_gender = users[selected_user]['target'], users[selected_user]['weight'], users[selected_user]['gender']
+    target = users[selected_user]['target']
+    u_weight = users[selected_user]['weight']
+    u_gender = users[selected_user]['gender']
     
     consumed = sum([daily[k]['calories'] for k in ['breakfast', 'lunch', 'dinner'] if daily[k]])
     burned = daily['exercise']['burned_calories'] if daily['exercise'] else 0
@@ -154,10 +185,10 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     st.progress(min(max(consumed / (target + burned + 0.001), 0.0), 1.0))
     st.markdown("""
     <div class="budget-info">
-        💡 <b>关于减脂预算的硬核科普：</b><br>
-        上方的【目标预算】是你今天的<b>绝对安全线</b>。这个数值已经提前帮你扣除了每天 400 大卡的热量缺口。
-        这意味着，<b>只要你今天吃满这个预算值，你就已经处于稳健的减脂状态了！</b><br>
-        ❌ <b>千万不要为了追求速度，吃得比预算少很多！</b> 强行制造过大缺口会导致严重掉肌肉、基础代谢受损、大姨妈出走、以及后期的疯狂暴食反弹。请安心把预算吃满！
+    💡 <b>关于减脂预算的硬核科普：</b><br>
+    上方的【目标预算】是你今天的<b>绝对安全线</b>。这个数值已经提前帮你扣除了每天 400 大卡的热量缺口。
+    这意味着，<b>只要你今天吃满这个预算值，你就已经处于稳健的减脂状态了！</b><br>
+    ❌ <b>千万不要为了追求速度，吃得比预算少很多！</b> 强行制造过大缺口会导致严重掉肌肉、基础代谢受损、大姨妈出走、以及后期的疯狂暴食反弹。请安心把预算吃满！
     </div>
     """, unsafe_allow_html=True)
 
@@ -167,26 +198,51 @@ if selected_user and selected_user != "➕ 新建身体档案...":
         with st.container():
             st.markdown("### 📸 记录饮食与运动")
             tab1, tab2 = st.tabs(["🍽️ 记饮食", "🏃 记运动"])
+            
             with tab1:
                 meal_type = st.radio("当前餐段", ["早餐", "午餐", "晚餐"], horizontal=True)
                 meal_key = {"早餐": "breakfast", "午餐": "lunch", "晚餐": "dinner"}[meal_type]
                 uploaded_img = st.file_uploader("上传美食照片", type=["jpg", "png", "webp"])
                 meal_input = st.text_area("补充文字说明 (例如：油很大，半碗饭)", height=100)
+                
                 if st.button("✨ 开启 AI 深度分析"):
-                    if not meal_input and not uploaded_img: st.error("请传图或输入文字描述！")
+                    if not meal_input and not uploaded_img: 
+                        st.error("请传图或输入文字描述！")
                     else:
                         with st.spinner("AI 营养师正在分析..."):
-                            prompt = f"用户({u_gender},{u_weight}kg)记录饮食。补充说明: {meal_input or '无'}。请识别食物并估算卡路里，返回纯JSON: {{\"food\": \"食物及分量\", \"calories\": 整数, \"analysis\": \"简短点评\"}}"
+                            prompt = f"用户({u_gender},{u_weight}kg)记录饮食。补充说明: {meal_input or '无'}。请识别食物并估算卡路里，返回纯JSON，不要输出任何其他文字，格式严格如下: {{\"food\": \"食物及分量\", \"calories\": 整数, \"analysis\": \"简短点评\"}}"
                             contents = [prompt] + ([Image.open(uploaded_img)] if uploaded_img else [])
-                            res = json.loads(model.generate_content(contents).text.replace('```json','').replace('```','').strip())
+                            
+                            try:
+                                res_text = model.generate_content(contents).text
+                                # 💡 改进：正则提取防崩溃
+                                json_match = re.search(r'\{.*\}', res_text.replace('\n', ''), re.DOTALL)
+                                if json_match:
+                                    res = json.loads(json_match.group())
+                                else:
+                                    res = {"food": meal_input or "未知食物", "calories": 0, "analysis": "AI 返回格式有误，未找到JSON。"}
+                            except Exception as e:
+                                res = {"food": "解析失败", "calories": 0, "analysis": f"AI服务出错: {str(e)}"}
+                                
                             daily[meal_key] = {"text": res.get("food", meal_input), "calories": res.get("calories", 0), "analysis": res.get("analysis", "")}
                             save_data(records, RECORDS_FILE)
                             st.rerun()
+                            
             with tab2:
                 exercise_input = st.text_area("今天做了什么运动？", height=100)
                 if st.button("🔥 计算消耗"):
                     with st.spinner("计算中..."):
-                        res = json.loads(model.generate_content(f"用户运动: {exercise_input}。返回纯JSON: {{\"burned\": 整数, \"analysis\": \"点评\"}}").text.replace('```json','').replace('```','').strip())
+                        prompt_ex = f"用户运动: {exercise_input}。返回纯JSON，不要多余文字: {{\"burned\": 整数, \"analysis\": \"点评\"}}"
+                        try:
+                            res_text = model.generate_content(prompt_ex).text
+                            json_match = re.search(r'\{.*\}', res_text.replace('\n', ''), re.DOTALL)
+                            if json_match:
+                                res = json.loads(json_match.group())
+                            else:
+                                res = {"burned": 0, "analysis": "AI 返回格式有误。"}
+                        except Exception as e:
+                            res = {"burned": 0, "analysis": f"AI服务出错: {str(e)}"}
+                            
                         daily['exercise'] = {"text": exercise_input, "burned_calories": res.get("burned", 0), "analysis": res.get("analysis", "")}
                         save_data(records, RECORDS_FILE)
                         st.rerun()
@@ -198,15 +254,17 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                 if daily[m_key]:
                     with st.expander(f"{icon} {m_name}账单 (+{daily[m_key]['calories']} kcal)", expanded=True):
                         st.write(f"**内容**: {daily[m_key]['text']}\n\n**点评**: {daily[m_key]['analysis']}")
+            
             if daily['exercise']:
                 with st.expander(f"🏃 运动流水 (-{daily['exercise']['burned_calories']} kcal)", expanded=True):
                     st.write(f"**内容**: {daily['exercise']['text']}\n\n**点评**: {daily['exercise']['analysis']}")
-                    
+            
             st.markdown("---")
             st.markdown("### 🥗 每日营养闭环分析")
             if st.button("🧬 召唤 AI 分析今日整体营养缺口"):
-                meals_text = str({k: daily[k] for k in ['breakfast','lunch','dinner'] if daily[k]})
-                if len(meals_text) < 10:
+                meals_dict = {k: daily[k] for k in ['breakfast','lunch','dinner'] if daily[k]}
+                meals_text = str(meals_dict)
+                if len(meals_dict) == 0:
                     st.warning("今天还没有记录足够的饮食哦！")
                 else:
                     with st.spinner("正在生成今日营养元素透视报告..."):
@@ -214,6 +272,7 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                         report = model.generate_content(prompt).text
                         daily['daily_nutrition_analysis'] = report
                         save_data(records, RECORDS_FILE)
+            
             if daily.get('daily_nutrition_analysis'):
                 with st.expander("📊 查看今日详细营养缺口报告", expanded=False):
                     st.info(daily['daily_nutrition_analysis'])
