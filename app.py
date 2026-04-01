@@ -110,7 +110,7 @@ with st.sidebar:
 if api_key:
     genai.configure(api_key=api_key)
     # 使用万能版 gemini-1.5-flash-latest 模型
-    model = genai.GenerativeModel('gemini-1.5-flash-latest') 
+    model = genai.GenerativeModel('gemini-1.5-pro') 
 else:
     st.warning("👈 请先在左侧输入您的 GOOGLE_API_KEY 来激活 AI 引擎。")
     st.stop()
