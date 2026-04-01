@@ -106,7 +106,14 @@ USERS_FILE = "users.json"
 RECORDS_FILE = "records.json"
 
 def load_data(path):
-    return json.load(open(path, "r", encoding="utf-8")) if os.path.exists(path) else {}
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        # 如果文件是 0KB 或者损坏了，直接返回空字典，防止程序崩溃！
+        return {}
 
 def save_data(data, path):
     json.dump(data, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=4)
