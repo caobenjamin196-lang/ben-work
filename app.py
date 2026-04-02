@@ -266,5 +266,111 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     m1, m2, m3 = st.columns(3)
     with m1:
         st.caption(f"🍗 蛋白质 ({p_sum}/{target_macros['protein']}g)")
-        st.progress(min
-...(truncated)...
+        st.progress(min(p_sum/(target_macros['protein']+0.01), 1.0))
+    with m2:
+        st.caption(f"🍚 碳水 ({c_sum}/{target_macros['carbs']}g)")
+        st.progress(min(c_sum/(target_macros['carbs']+0.01), 1.0))
+    with m3:
+        st.caption(f"🥑 脂肪 ({f_sum}/{target_macros['fat']}g)")
+        st.progress(min(f_sum/(target_macros['fat']+0.01), 1.0))
+
+    col_left, col_right = st.columns([1, 1], gap="large")
+    
+    with col_left:
+        with st.container():
+            st.markdown("### 📸 记录饮食与运动")
+            tab1, tab2 = st.tabs(["🍽️ 记饮食", "🏃 记运动"])
+            
+            with tab1:
+                meal_type = st.radio("当前餐段", ["早餐", "午餐", "晚餐", "零食/加餐"], horizontal=True)
+                meal_key = {"早餐": "breakfast", "午餐": "lunch", "晚餐": "dinner", "零食/加餐": "snacks"}[meal_type]
+                uploaded_img = st.file_uploader("上传美食照片", type=["jpg", "png", "webp"])
+                meal_input = st.text_area("补充文字说明 (例如：油很大，半碗饭)", height=100)
+                
+                if st.button("✨ 开启 AI 深度识图分析"):
+                    if not meal_input and not uploaded_img: 
+                        st.error("请传图或输入文字描述！")
+                    else:
+                        with st.spinner("AI 营养师正在精准分析元素..."):
+                            period_prompt = "【特别提醒：用户目前处于生理期，请在点评时额外关注是否有补铁、暖身需求，并避免推荐寒凉食物。】" if is_period else ""
+                            prompt = f"""
+                            用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})记录了一顿 {meal_type}。
+                            补充说明: {meal_input or '无'}。
+                            {period_prompt}
+                            请识别食物并估算热量和三大营养素。
+                            务必返回纯 JSON，不包含任何外部文字或Markdown框！格式严格如下：
+                            {{"food": "识别出的食物及分量", "calories": 整数, "protein": 蛋白质克数整数, "carbs": 碳水克数整数, "fat": 脂肪克数整数, "analysis": "简短且专业的营养点评"}}
+                            """
+                            contents = [prompt] + ([Image.open(uploaded_img)] if uploaded_img else [])
+                            try:
+                                res_text = model.generate_content(contents).text
+                                json_match = re.search(r'\{[\s\S]*\}', res_text)
+                                if json_match:
+                                    res = json.loads(json_match.group())
+                                else:
+                                    res = {"food": meal_input, "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": "AI 返回格式有误。"}
+                            except Exception as e:
+                                res = {"food": "解析失败", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": f"API 错误: {str(e)}"}
+                                
+                            daily[meal_key] = res
+                            save_data(records, RECORDS_FILE)
+                            st.rerun()
+                            
+            with tab2:
+                exercise_input = st.text_area("今天做了什么运动？", height=100)
+                if st.button("🔥 计算消耗"):
+                    with st.spinner("计算中..."):
+                        prompt_ex = f"用户({u_data['weight']}kg)运动: {exercise_input}。返回纯JSON: {{\"burned\": 整数, \"analysis\": \"点评\"}}"
+                        try:
+                            res_text = model.generate_content(prompt_ex).text
+                            json_match = re.search(r'\{[\s\S]*\}', res_text)
+                            res = json.loads(json_match.group()) if json_match else {"burned": 0, "analysis": "解析失败"}
+                        except Exception:
+                            res = {"burned": 0, "analysis": "错误"}
+                            
+                        daily['exercise'] = {"text": exercise_input, "burned_calories": res.get("burned", 0), "analysis": res.get("analysis", "")}
+                        save_data(records, RECORDS_FILE)
+                        st.rerun()
+
+    with col_right:
+        with st.container():
+            st.markdown("### 📝 今日打卡清单")
+            for m_key, m_name, icon in [("breakfast", "早餐", "🥞"), ("lunch", "午餐", "🍱"), ("dinner", "晚餐", "🥗"), ("snacks", "零食", "🍿")]:
+                if daily.get(m_key):
+                    with st.expander(f"{icon} {m_name}账单 (+{daily[m_key].get('calories',0)} kcal)", expanded=True):
+                        st.write(f"**内容**: {daily[m_key].get('food', daily[m_key].get('text', ''))}")
+                        st.caption(f"营养素估算: 蛋白质 {daily[m_key].get('protein',0)}g | 碳水 {daily[m_key].get('carbs',0)}g | 脂肪 {daily[m_key].get('fat',0)}g")
+                        st.write(f"**点评**: {daily[m_key].get('analysis', '')}")
+            
+            if daily.get('exercise'):
+                with st.expander(f"🏃 运动流水 (-{daily['exercise']['burned_calories']} kcal)", expanded=True):
+                    st.write(f"**内容**: {daily['exercise']['text']}\n\n**点评**: {daily['exercise']['analysis']}")
+            
+            st.markdown("---")
+            st.markdown("### 🥗 每日营养闭环分析")
+            if st.button("🧬 召唤 AI 分析今日整体营养缺口"):
+                meals_dict = {k: daily[k] for k in ['breakfast','lunch','dinner','snacks'] if daily.get(k)}
+                if not meals_dict:
+                    st.warning("今天还没有记录足够的饮食哦！")
+                else:
+                    with st.spinner("正在生成今日营养元素透视报告..."):
+                        period_note = "【特别提醒：该女生正处于生理期】" if is_period else ""
+                        prompt = f"用户今日饮食：{str(meals_dict)}。目标:{u_data.get('goal','减脂')}。{period_note} 请作为高级营养师分析今天营养摄入比例是否合理，重点指出缺乏的微量元素/宏量元素，并给出明确的补足建议。"
+                        daily['daily_nutrition_analysis'] = model.generate_content(prompt).text
+                        save_data(records, RECORDS_FILE)
+            
+            if daily.get('daily_nutrition_analysis'):
+                with st.expander("📊 查看今日详细营养缺口报告", expanded=False):
+                    st.info(daily['daily_nutrition_analysis'])
+
+# ================= 月度终极报告 =================
+st.markdown("---")
+st.markdown("### 📅 月度身材与饮食复盘")
+if st.button("📈 生成当月 AI 深度诊断报告"):
+    all_data = records.get(selected_user, {})
+    if len(all_data) < 3: st.warning("记录少于 3 天，积累更多数据再来生成报告会更准哦！")
+    else:
+        with st.spinner("AI 正在深度挖掘未来规划报告..."):
+            u_data = users[selected_user]
+            prompt = f"高级身材管理专家。用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})打卡日志：{json.dumps(all_data, ensure_ascii=False)}。出具专业复盘与次月调整方案(必须包含致命问题诊断和具体采购建议)。"
+            st.write(model.generate_content(prompt).text)
