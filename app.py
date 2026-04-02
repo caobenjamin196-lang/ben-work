@@ -98,14 +98,14 @@ st.markdown("""
         border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
         border-left: 4px solid #f43f5e;
     }
-    /* 桌面宠物背景图 CSS：保证不挡操作 */
+    /* 桌面宠物背景图放大 (v2版本设定) */
     .bg-pet-left {
-        position: fixed; bottom: 20px; left: 20px; width: 180px; 
-        opacity: 0.25; z-index: 0; pointer-events: none;
+        position: fixed; bottom: 10px; left: 10px; width: 350px; 
+        opacity: 0.35; z-index: 0; pointer-events: none;
     }
     .bg-pet-right {
-        position: fixed; bottom: 20px; right: 20px; width: 180px; 
-        opacity: 0.25; z-index: 0; pointer-events: none;
+        position: fixed; bottom: 10px; right: 10px; width: 350px; 
+        opacity: 0.35; z-index: 0; pointer-events: none;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -196,7 +196,6 @@ records = load_data(RECORDS_FILE)
 
 # ================= 时区与日期计算 =================
 def get_user_timezone_date(username):
-    # 'ben' 用乌拉圭时区，'宝'（及其他人）默认使用中国时区
     tz_str = "America/Montevideo" if username.lower() == "ben" else "Asia/Shanghai"
     try:
         try:
@@ -413,11 +412,13 @@ if selected_user and selected_user != "➕ 新建身体档案...":
             with tab1:
                 meal_type = st.radio("当前餐段", ["早餐", "午餐", "晚餐", "零食/加餐"], horizontal=True)
                 meal_key = {"早餐": "breakfast", "午餐": "lunch", "晚餐": "dinner", "零食/加餐": "snacks"}[meal_type]
-                uploaded_img = st.file_uploader("上传美食照片", type=["jpg", "png", "webp"])
+                
+                # V2 新增：允许多选图片上传
+                uploaded_imgs = st.file_uploader("上传美食照片 (可多图上传，支持 500MB 以内)", type=["jpg", "png", "webp"], accept_multiple_files=True)
                 meal_input = st.text_area("补充文字说明 (例如：油很大，半碗饭)", height=100)
                 
                 if st.button("✨ 开启 AI 深度识图分析"):
-                    if not meal_input and not uploaded_img: 
+                    if not meal_input and not uploaded_imgs: 
                         st.error("请传图或输入文字描述！")
                     else:
                         with st.spinner("AI 营养师正在精准分析元素..."):
@@ -426,11 +427,15 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                             用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})记录了一顿 {meal_type}。
                             补充说明: {meal_input or '无'}。
                             {period_prompt}
-                            请识别食物并估算热量和三大营养素。
+                            请识别所有提供的食物图片并估算热量和三大营养素。
                             务必返回纯 JSON，不包含任何外部文字或Markdown框！格式严格如下：
                             {{"food": "识别出的食物及分量", "calories": 整数, "protein": 蛋白质克数整数, "carbs": 碳水克数整数, "fat": 脂肪克数整数, "analysis": "简短且专业的营养点评"}}
                             """
-                            contents = [prompt] + ([Image.open(uploaded_img)] if uploaded_img else [])
+                            # 将所有的图片加载并拼接到 contents 列表里
+                            contents = [prompt]
+                            if uploaded_imgs:
+                                for img in uploaded_imgs:
+                                    contents.append(Image.open(img))
                             
                             try:
                                 res_text = safe_generate_content(contents)
@@ -493,15 +498,14 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                 with st.expander("📊 查看今日详细营养缺口报告", expanded=False):
                     st.info(daily['daily_nutrition_analysis'])
 
-# ================= 月度终极报告 =================
-st.markdown("---")
-st.markdown("### 📅 月度身材与饮食复盘")
-if st.button("📈 生成当月 AI 深度诊断报告"):
-    all_data = records.get(selected_user, {})
-    if len(all_data) < 3: 
-        st.warning("记录少于 3 天，积累更多数据再来生成报告会更准哦！")
-    else:
-        with st.spinner("AI 正在深度挖掘未来规划报告..."):
-            u_data = users[selected_user]
-            prompt = f"高级身材管理专家。用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})打卡日志：{json.dumps(all_data, ensure_ascii=False)}。出具专业复盘与次月调整方案(必须包含致命问题诊断和具体采购建议)。"
-            st.write(safe_generate_content(prompt))
+    # ================= 月度终极报告 =================
+    st.markdown("---")
+    st.markdown("### 📅 月度身材与饮食复盘")
+    if st.button("📈 生成当月 AI 深度诊断报告"):
+        all_data = records.get(selected_user, {})
+        if len(all_data) < 3: 
+            st.warning("记录少于 3 天，积累更多数据再来生成报告会更准哦！")
+        else:
+            with st.spinner("AI 正在深度挖掘未来规划报告..."):
+                prompt = f"高级身材管理专家。用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})打卡日志：{json.dumps(all_data, ensure_ascii=False)}。出具专业复盘与次月调整方案(必须包含致命问题诊断和具体采购建议)。"
+                st.write(safe_generate_content(prompt))
