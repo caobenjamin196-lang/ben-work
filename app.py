@@ -11,7 +11,7 @@ from PIL import Image
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
-    import pytz # 如果报错，请确保 pip install pytz
+    import pytz # 如果报错，请确保云端 requirements.txt 里有 pytz
 
 # ================= 🚨 页面配置 =================
 st.set_page_config(page_title="🍏 AI 减脂与营养监督", layout="wide", initial_sidebar_state="expanded")
@@ -37,16 +37,25 @@ def check_password():
 if not check_password():
     st.stop()
 
-# ================= 读取桌面图片并转为 Base64 =================
-def get_base64_image(file_path):
-    expanded_path = os.path.expanduser(file_path)
-    if not os.path.exists(expanded_path):
-        return ""
-    with open(expanded_path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode('utf-8')
+# ================= 读取图片并转为 Base64 (兼容云端和本地) =================
+def get_base64_image(filename):
+    # 1. 优先尝试在当前代码所在目录寻找 (针对部署到 Streamlit Cloud)
+    local_path = os.path.join(os.path.dirname(__file__), filename)
+    if os.path.exists(local_path):
+        with open(local_path, "rb") as f:
+            return base64.b64encode(f.read()).decode('utf-8')
+    
+    # 2. 如果当前目录没有，尝试去 Mac 桌面找 (针对本地调试)
+    mac_path = os.path.expanduser(f"~/Desktop/{filename}")
+    if os.path.exists(mac_path):
+        with open(mac_path, "rb") as f:
+            return base64.b64encode(f.read()).decode('utf-8')
+            
+    return ""
 
-dog_gif_b64 = get_base64_image("~/Desktop/dog.gif")
-dog1_jpg_b64 = get_base64_image("~/Desktop/dog 1.jpeg")
+# 注意：部署到云端时，请确保代码仓库里有这两个文件
+dog_gif_b64 = get_base64_image("dog.gif")
+dog1_jpg_b64 = get_base64_image("dog 1.jpeg")
 
 # ================= 自定义 CSS 美化 =================
 st.markdown("""
@@ -70,7 +79,7 @@ st.markdown("""
         z-index: 10;
         position: relative;
     }
-    section[data-testid="stSidebar"] { background-color: rgba(255, 255, 255, 0.95) !important; }
+    section[data-testid="stSidebar"] { background-color: rgba(255, 255, 255, 0.95) !important; z-index: 100;}
     div[data-testid="stMetricValue"] { color: #10b981; font-weight: bold; }
     .stButton > button {
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -89,19 +98,19 @@ st.markdown("""
         border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
         border-left: 4px solid #f43f5e;
     }
-    /* 桌面宠物背景图 CSS */
+    /* 桌面宠物背景图 CSS：保证不挡操作 */
     .bg-pet-left {
         position: fixed; bottom: 20px; left: 20px; width: 180px; 
-        opacity: 0.3; z-index: 0; pointer-events: none; /* pointer-events: none 确保不阻挡鼠标点击 */
+        opacity: 0.25; z-index: 0; pointer-events: none;
     }
     .bg-pet-right {
         position: fixed; bottom: 20px; right: 20px; width: 180px; 
-        opacity: 0.3; z-index: 0; pointer-events: none;
+        opacity: 0.25; z-index: 0; pointer-events: none;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# 注入桌面宠物图片
+# 注入小狗背景
 if dog_gif_b64:
     st.markdown(f'<img src="data:image/gif;base64,{dog_gif_b64}" class="bg-pet-left">', unsafe_allow_html=True)
 if dog1_jpg_b64:
@@ -188,7 +197,7 @@ records = load_data(RECORDS_FILE)
 # ================= 时区与日期计算 =================
 def get_user_timezone_date(username):
     # 'ben' 用乌拉圭时区，'宝'（及其他人）默认使用中国时区
-    tz_str = "Asia/Shanghai" if username == "宝" else "America/Montevideo"
+    tz_str = "America/Montevideo" if username.lower() == "ben" else "Asia/Shanghai"
     try:
         try:
             tz = ZoneInfo(tz_str)
@@ -197,7 +206,6 @@ def get_user_timezone_date(username):
             tz = pytz.timezone(tz_str)
         user_now = datetime.datetime.now(tz)
     except Exception:
-        # Fallback to local time if timezone library fails
         user_now = datetime.datetime.now()
     
     return user_now.strftime("%Y-%m-%d"), user_now.weekday()
@@ -267,21 +275,35 @@ with st.sidebar:
     # ================= 管理员专属：修改与删除用户 =================
     st.markdown("---")
     with st.expander("🛠️ 档案管理 (仅管理员)"):
-        st.caption("输入授权码即可修改或删除用户档案。")
+        st.caption("输入授权码即可修改或彻底删除档案。")
         admin_auth = st.text_input("管理员授权码", type="password", key="admin_auth")
-        if admin_auth == "240909":  # 这里用你的进入密码作为管理员密码
+        if admin_auth == "240909": 
             st.success("✅ 权限已验证")
             target_to_edit = st.selectbox("选择要管理的档案", list(users.keys()), key="target_to_edit")
             
             if target_to_edit:
                 t_data = users[target_to_edit]
+                
+                # 安全获取 index，防止历史脏数据导致抛错
+                g_opts = ["男", "女"]
+                g_val = t_data.get('gender', '男')
+                g_idx = g_opts.index(g_val) if g_val in g_opts else 0
+                
+                goal_opts = ["减脂", "营养监测/维持健康", "增肌"]
+                goal_val = t_data.get('goal', '减脂')
+                goal_idx = goal_opts.index(goal_val) if goal_val in goal_opts else 0
+                
+                act_opts = ["几乎不运动", "轻度活动", "中度活动"]
+                act_val = t_data.get('activity', '几乎不运动')
+                act_idx = act_opts.index(act_val) if act_val in act_opts else 0
+
                 with st.form("edit_user_form"):
-                    e_gender = st.selectbox("性别", ["男", "女"], index=0 if t_data.get('gender')=="男" else 1)
-                    e_goal = st.selectbox("主要目标", ["减脂", "营养监测/维持健康", "增肌"], index=["减脂", "营养监测/维持健康", "增肌"].index(t_data.get('goal', '减脂')))
+                    e_gender = st.selectbox("性别", g_opts, index=g_idx)
+                    e_goal = st.selectbox("主要目标", goal_opts, index=goal_idx)
                     e_height = st.number_input("身高 (cm)", 100, 250, int(t_data.get('height', 170)))
                     e_age = st.number_input("年龄", 10, 100, int(t_data.get('age', 25)))
                     e_weight = st.number_input("体重 (kg)", 30.0, 200.0, float(t_data.get('weight', 65.0)), step=0.1)
-                    e_activity = st.selectbox("日常活动量", ["几乎不运动", "轻度活动", "中度活动"], index=["几乎不运动", "轻度活动", "中度活动"].index(t_data.get('activity', '几乎不运动')))
+                    e_activity = st.selectbox("日常活动量", act_opts, index=act_idx)
                     
                     if st.form_submit_button("📝 强制保存修改"):
                         bmr, tdee, target, macros = calculate_metrics(e_gender, e_weight, e_height, e_age, e_activity, e_goal)
@@ -294,7 +316,7 @@ with st.sidebar:
                         st.rerun()
 
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button(f"🗑️ 删除用户 '{target_to_edit}'", type="primary"):
+                if st.button(f"🗑️ 永久删除 '{target_to_edit}'", type="primary"):
                     del users[target_to_edit]
                     if target_to_edit in records:
                         del records[target_to_edit]
@@ -310,7 +332,7 @@ if not users:
 if selected_user and selected_user != "➕ 新建身体档案...":
     u_data = users[selected_user]
     
-    # 根据用户所在时区获取今天的日期字符串和星期几
+    # 动态时区检测，拿到该用户当地的今天日期
     today_str, current_weekday = get_user_timezone_date(selected_user)
     
     # ================= 每周一更新体重提醒 =================
@@ -330,7 +352,8 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     if u_data['gender'] == '女':
         is_period = st.checkbox("🌸 我当前正处于生理期 (将自动调整推荐与关怀)")
 
-    # 跨天重置逻辑：如果今天的日期不在该用户的记录里，自动创建一天的空数据（旧的按日期妥善保存在 records.json 中）
+    # ================= 跨天重置与保存逻辑 =================
+    # 根据 today_str（时区日期）读取或创建今日数据，旧日期的数据自动冻结在 records 里
     if selected_user not in records: records[selected_user] = {}
     if today_str not in records[selected_user]:
         records[selected_user][today_str] = {"breakfast": None, "lunch": None, "dinner": None, "snacks": None, "exercise": None, "daily_nutrition_analysis": None}
@@ -351,7 +374,7 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     remaining = target - consumed + burned
     
     # ================= 数据大盘 =================
-    st.markdown(f"### 📊 今日全景监控 (时区归属: {today_str})")
+    st.markdown(f"### 📊 今日全景监控 (归属地: {today_str})")
     
     if is_period:
         st.markdown("""
