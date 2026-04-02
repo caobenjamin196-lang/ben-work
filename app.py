@@ -102,12 +102,38 @@ with st.sidebar:
 
 if api_key:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-3.1-pro-preview') 
 else:
     st.warning("👈 请先在左侧输入您的 GOOGLE_API_KEY 来激活 AI 引擎。")
     st.stop()
 
-# ================= 🚨 数据持久化 =================
+# ================= 🚨 智能模型调度引擎 =================
+def safe_generate_content(contents_or_prompt):
+    """
+    优先使用 3.1 Pro，若遇到 429 额度耗尽，自动平滑切换到 2.5 Flash
+    """
+    primary_model_name = 'gemini-3.1-pro-preview'
+    fallback_model_name = 'gemini-2.5-flash'
+    
+    try:
+        primary_model = genai.GenerativeModel(primary_model_name)
+        response = primary_model.generate_content(contents_or_prompt)
+        return response.text
+    except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg or "Quota exceeded" in error_msg:
+            # 在界面上给出轻提示，让用户知道发生了降级
+            st.toast("⚠️ 3.1 Pro 免费额度耗尽，已自动为您无缝切换至 2.5 Flash 引擎！", icon="🚀")
+            try:
+                fallback_model = genai.GenerativeModel(fallback_model_name)
+                response = fallback_model.generate_content(contents_or_prompt)
+                return response.text
+            except Exception as e2:
+                raise Exception(f"备用模型 2.5 Flash 也遇到异常: {e2}")
+        else:
+            # 如果不是额度问题（比如网络断了），直接抛出错误
+            raise e
+
+# ================= 数据持久化 =================
 USERS_FILE = "users.json"
 RECORDS_FILE = "records.json"
 
@@ -132,24 +158,21 @@ records = load_data(RECORDS_FILE)
 
 # ================= 核心计算公式 =================
 def calculate_metrics(gender, weight, height, age, activity, goal):
-    # 基础代谢 BMR (Mifflin-St Jeor)
     bmr = int(10*weight + 6.25*height - 5*age + (5 if gender=="男" else -161))
     activity_multiplier = {"几乎不运动": 1.2, "轻度活动": 1.375, "中度活动": 1.55}.get(activity, 1.2)
     tdee = int(bmr * activity_multiplier)
     
-    # 根据目标计算热量缺口
     target = tdee
     if goal == "减脂": target -= 400
     elif goal == "增肌": target += 300
     
-    # 宏量营养素推荐 (蛋白质/碳水/脂肪)
     if goal == "减脂":
         protein = int(weight * 1.8)
         fat = int(weight * 0.8)
     elif goal == "增肌":
         protein = int(weight * 2.0)
         fat = int(weight * 1.0)
-    else: # 营养监测维持
+    else: 
         protein = int(weight * 1.2)
         fat = int(weight * 1.0)
         
@@ -184,7 +207,6 @@ with st.sidebar:
                 save_data(users, USERS_FILE)
                 st.rerun()
     else:
-        # 兼容老数据结构
         u_data = users[selected_user]
         u_goal = u_data.get("goal", "减脂")
         u_bmr = u_data.get("bmr", int(10*u_data['weight'] + 6.25*u_data['height'] - 5*u_data['age'] + (5 if u_data['gender']=="男" else -161)))
@@ -203,7 +225,7 @@ if not users:
 if selected_user and selected_user != "➕ 新建身体档案...":
     u_data = users[selected_user]
     
-    # ================= 🚨 每周一更新体重提醒 =================
+    # ================= 每周一更新体重提醒 =================
     if datetime.date.today().weekday() == 0:
         st.warning("📅 **今天是周一！** 新的一周，为了让 AI 监控更精准，请记录一下最新体重吧！")
         with st.expander("⚖️ 更新本周体重", expanded=False):
@@ -225,16 +247,13 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     if today_str not in records[selected_user]:
         records[selected_user][today_str] = {"breakfast": None, "lunch": None, "dinner": None, "snacks": None, "exercise": None, "daily_nutrition_analysis": None}
     
-    # 兼容老记录（没有 snacks 字段）
     if "snacks" not in records[selected_user][today_str]: records[selected_user][today_str]["snacks"] = None
     
     daily = records[selected_user][today_str]
     target = u_data['target']
     
-    # 生理期热量补偿
     if is_period: target += 150 
 
-    # 统计摄入与宏量营养
     consumed = sum([daily[k].get('calories', 0) for k in ['breakfast', 'lunch', 'dinner', 'snacks'] if daily[k]])
     p_sum = sum([daily[k].get('protein', 0) for k in ['breakfast', 'lunch', 'dinner', 'snacks'] if daily[k]])
     c_sum = sum([daily[k].get('carbs', 0) for k in ['breakfast', 'lunch', 'dinner', 'snacks'] if daily[k]])
@@ -260,7 +279,6 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     c4.metric("⚖️ 结余 (剩余可吃)", f"{remaining} kcal", delta_color="normal" if remaining >= 0 else "inverse")
     st.progress(min(max(consumed / (target + burned + 0.001), 0.0), 1.0))
     
-    # 宏量营养素进度
     target_macros = u_data.get('macros', {"protein": 80, "carbs": 150, "fat": 40})
     st.markdown("**🥗 核心营养素达标监控**")
     m1, m2, m3 = st.columns(3)
@@ -302,8 +320,10 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                             {{"food": "识别出的食物及分量", "calories": 整数, "protein": 蛋白质克数整数, "carbs": 碳水克数整数, "fat": 脂肪克数整数, "analysis": "简短且专业的营养点评"}}
                             """
                             contents = [prompt] + ([Image.open(uploaded_img)] if uploaded_img else [])
+                            
                             try:
-                                res_text = model.generate_content(contents).text
+                                # 这里替换成了我们的自动调度函数
+                                res_text = safe_generate_content(contents)
                                 json_match = re.search(r'\{[\s\S]*\}', res_text)
                                 if json_match:
                                     res = json.loads(json_match.group())
@@ -322,7 +342,8 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                     with st.spinner("计算中..."):
                         prompt_ex = f"用户({u_data['weight']}kg)运动: {exercise_input}。返回纯JSON: {{\"burned\": 整数, \"analysis\": \"点评\"}}"
                         try:
-                            res_text = model.generate_content(prompt_ex).text
+                            # 这里也替换成了自动调度函数
+                            res_text = safe_generate_content(prompt_ex)
                             json_match = re.search(r'\{[\s\S]*\}', res_text)
                             res = json.loads(json_match.group()) if json_match else {"burned": 0, "analysis": "解析失败"}
                         except Exception:
@@ -356,7 +377,8 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                     with st.spinner("正在生成今日营养元素透视报告..."):
                         period_note = "【特别提醒：该女生正处于生理期】" if is_period else ""
                         prompt = f"用户今日饮食：{str(meals_dict)}。目标:{u_data.get('goal','减脂')}。{period_note} 请作为高级营养师分析今天营养摄入比例是否合理，重点指出缺乏的微量元素/宏量元素，并给出明确的补足建议。"
-                        daily['daily_nutrition_analysis'] = model.generate_content(prompt).text
+                        # 同样替换为调度函数
+                        daily['daily_nutrition_analysis'] = safe_generate_content(prompt)
                         save_data(records, RECORDS_FILE)
             
             if daily.get('daily_nutrition_analysis'):
@@ -368,9 +390,11 @@ st.markdown("---")
 st.markdown("### 📅 月度身材与饮食复盘")
 if st.button("📈 生成当月 AI 深度诊断报告"):
     all_data = records.get(selected_user, {})
-    if len(all_data) < 3: st.warning("记录少于 3 天，积累更多数据再来生成报告会更准哦！")
+    if len(all_data) < 3: 
+        st.warning("记录少于 3 天，积累更多数据再来生成报告会更准哦！")
     else:
         with st.spinner("AI 正在深度挖掘未来规划报告..."):
             u_data = users[selected_user]
             prompt = f"高级身材管理专家。用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})打卡日志：{json.dumps(all_data, ensure_ascii=False)}。出具专业复盘与次月调整方案(必须包含致命问题诊断和具体采购建议)。"
-            st.write(model.generate_content(prompt).text)
+            # 同样替换为调度函数
+            st.write(safe_generate_content(prompt))
