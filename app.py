@@ -3,8 +3,15 @@ import json
 import os
 import datetime
 import re
+import base64
 import google.generativeai as genai
 from PIL import Image
+
+# 兼容不同的 Python 版本来处理时区
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    import pytz # 如果报错，请确保 pip install pytz
 
 # ================= 🚨 页面配置 =================
 st.set_page_config(page_title="🍏 AI 减脂与营养监督", layout="wide", initial_sidebar_state="expanded")
@@ -30,47 +37,75 @@ def check_password():
 if not check_password():
     st.stop()
 
+# ================= 读取桌面图片并转为 Base64 =================
+def get_base64_image(file_path):
+    expanded_path = os.path.expanduser(file_path)
+    if not os.path.exists(expanded_path):
+        return ""
+    with open(expanded_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode('utf-8')
+
+dog_gif_b64 = get_base64_image("~/Desktop/dog.gif")
+dog1_jpg_b64 = get_base64_image("~/Desktop/dog 1.jpeg")
+
 # ================= 自定义 CSS 美化 =================
 st.markdown("""
 <style>
- div.stApp {
-     background: url("https://raw.githubusercontent.com/openclaw/openclaw/main/docs/static/dog.png") no-repeat center center fixed !important;
-     background-color: #f7f9fc !important;
-     background-size: cover !important;
- }
- .stApp > header { background-color: transparent !important; }
- .stApp .main .block-container {
-     background: rgba(255, 255, 255, 0.90) !important;
-     border-radius: 20px !important;
-     padding: 3rem 2rem !important;
-     box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15) !important;
-     backdrop-filter: blur(15px) !important;
-     -webkit-backdrop-filter: blur(15px) !important;
-     border: 1px solid rgba(255, 255, 255, 0.4) !important;
-     max-width: 1200px !important;
-     margin-top: 2rem !important;
- }
- section[data-testid="stSidebar"] { background-color: rgba(255, 255, 255, 0.95) !important; }
- div[data-testid="stMetricValue"] { color: #10b981; font-weight: bold; }
- .stButton > button {
-     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-     color: white; border: none; border-radius: 8px;
-     padding: 0.6rem 1rem; font-weight: 600; width: 100%;
-     transition: all 0.3s ease;
- }
- .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 5px 10px -3px rgba(16,185,129,0.3); color: white;}
- .info-box {
-     background-color: #e0f2fe; color: #0369a1; padding: 12px 16px;
-     border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
-     border-left: 4px solid #0ea5e9;
- }
- .period-box {
-     background-color: #fce7f3; color: #be185d; padding: 12px 16px;
-     border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
-     border-left: 4px solid #f43f5e;
- }
+    div.stApp {
+        background: url("https://raw.githubusercontent.com/openclaw/openclaw/main/docs/static/dog.png") no-repeat center center fixed !important;
+        background-color: #f7f9fc !important;
+        background-size: cover !important;
+    }
+    .stApp > header { background-color: transparent !important; }
+    .stApp .main .block-container {
+        background: rgba(255, 255, 255, 0.90) !important;
+        border-radius: 20px !important;
+        padding: 3rem 2rem !important;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15) !important;
+        backdrop-filter: blur(15px) !important;
+        -webkit-backdrop-filter: blur(15px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.4) !important;
+        max-width: 1200px !important;
+        margin-top: 2rem !important;
+        z-index: 10;
+        position: relative;
+    }
+    section[data-testid="stSidebar"] { background-color: rgba(255, 255, 255, 0.95) !important; }
+    div[data-testid="stMetricValue"] { color: #10b981; font-weight: bold; }
+    .stButton > button {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white; border: none; border-radius: 8px;
+        padding: 0.6rem 1rem; font-weight: 600; width: 100%;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 5px 10px -3px rgba(16,185,129,0.3); color: white;}
+    .info-box {
+        background-color: #e0f2fe; color: #0369a1; padding: 12px 16px;
+        border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
+        border-left: 4px solid #0ea5e9;
+    }
+    .period-box {
+        background-color: #fce7f3; color: #be185d; padding: 12px 16px;
+        border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
+        border-left: 4px solid #f43f5e;
+    }
+    /* 桌面宠物背景图 CSS */
+    .bg-pet-left {
+        position: fixed; bottom: 20px; left: 20px; width: 180px; 
+        opacity: 0.3; z-index: 0; pointer-events: none; /* pointer-events: none 确保不阻挡鼠标点击 */
+    }
+    .bg-pet-right {
+        position: fixed; bottom: 20px; right: 20px; width: 180px; 
+        opacity: 0.3; z-index: 0; pointer-events: none;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# 注入桌面宠物图片
+if dog_gif_b64:
+    st.markdown(f'<img src="data:image/gif;base64,{dog_gif_b64}" class="bg-pet-left">', unsafe_allow_html=True)
+if dog1_jpg_b64:
+    st.markdown(f'<img src="data:image/jpeg;base64,{dog1_jpg_b64}" class="bg-pet-right">', unsafe_allow_html=True)
 
 # ================= API Key 配置 =================
 api_key = os.environ.get("GOOGLE_API_KEY")
@@ -108,12 +143,8 @@ else:
 
 # ================= 🚨 智能模型调度引擎 =================
 def safe_generate_content(contents_or_prompt):
-    """
-    优先使用 3.1 Pro，若遇到 429 额度耗尽，自动平滑切换到 2.5 Flash
-    """
     primary_model_name = 'gemini-3.1-pro-preview'
     fallback_model_name = 'gemini-2.5-flash'
-    
     try:
         primary_model = genai.GenerativeModel(primary_model_name)
         response = primary_model.generate_content(contents_or_prompt)
@@ -121,16 +152,14 @@ def safe_generate_content(contents_or_prompt):
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg or "Quota exceeded" in error_msg:
-            # 在界面上给出轻提示，让用户知道发生了降级
-            st.toast("⚠️ 3.1 Pro 免费额度耗尽，已自动为您无缝切换至 2.5 Flash 引擎！", icon="🚀")
+            st.toast("⚠️ 3.1 Pro 限流，已自动无缝切换至 2.5 Flash 引擎！", icon="🚀")
             try:
                 fallback_model = genai.GenerativeModel(fallback_model_name)
                 response = fallback_model.generate_content(contents_or_prompt)
                 return response.text
             except Exception as e2:
-                raise Exception(f"备用模型 2.5 Flash 也遇到异常: {e2}")
+                raise Exception(f"备用模型也异常: {e2}")
         else:
-            # 如果不是额度问题（比如网络断了），直接抛出错误
             raise e
 
 # ================= 数据持久化 =================
@@ -156,6 +185,23 @@ def save_data(data, path):
 users = load_data(USERS_FILE)
 records = load_data(RECORDS_FILE)
 
+# ================= 时区与日期计算 =================
+def get_user_timezone_date(username):
+    # 'ben' 用乌拉圭时区，'宝'（及其他人）默认使用中国时区
+    tz_str = "Asia/Shanghai" if username == "宝" else "America/Montevideo"
+    try:
+        try:
+            tz = ZoneInfo(tz_str)
+        except NameError:
+            import pytz
+            tz = pytz.timezone(tz_str)
+        user_now = datetime.datetime.now(tz)
+    except Exception:
+        # Fallback to local time if timezone library fails
+        user_now = datetime.datetime.now()
+    
+    return user_now.strftime("%Y-%m-%d"), user_now.weekday()
+
 # ================= 核心计算公式 =================
 def calculate_metrics(gender, weight, height, age, activity, goal):
     bmr = int(10*weight + 6.25*height - 5*age + (5 if gender=="男" else -161))
@@ -175,7 +221,7 @@ def calculate_metrics(gender, weight, height, age, activity, goal):
     else: 
         protein = int(weight * 1.2)
         fat = int(weight * 1.0)
-        
+    
     carbs = int((target - (protein * 4) - (fat * 9)) / 4)
     if carbs < 0: carbs = 0
     
@@ -218,6 +264,45 @@ with st.sidebar:
                 f"🔥 维持热量 (TDEE): {u_data.get('tdee', 0)} kcal\n"
                 f"🍽️ 今日限额: **{u_data.get('target', 0)}** kcal")
 
+    # ================= 管理员专属：修改与删除用户 =================
+    st.markdown("---")
+    with st.expander("🛠️ 档案管理 (仅管理员)"):
+        st.caption("输入授权码即可修改或删除用户档案。")
+        admin_auth = st.text_input("管理员授权码", type="password", key="admin_auth")
+        if admin_auth == "240909":  # 这里用你的进入密码作为管理员密码
+            st.success("✅ 权限已验证")
+            target_to_edit = st.selectbox("选择要管理的档案", list(users.keys()), key="target_to_edit")
+            
+            if target_to_edit:
+                t_data = users[target_to_edit]
+                with st.form("edit_user_form"):
+                    e_gender = st.selectbox("性别", ["男", "女"], index=0 if t_data.get('gender')=="男" else 1)
+                    e_goal = st.selectbox("主要目标", ["减脂", "营养监测/维持健康", "增肌"], index=["减脂", "营养监测/维持健康", "增肌"].index(t_data.get('goal', '减脂')))
+                    e_height = st.number_input("身高 (cm)", 100, 250, int(t_data.get('height', 170)))
+                    e_age = st.number_input("年龄", 10, 100, int(t_data.get('age', 25)))
+                    e_weight = st.number_input("体重 (kg)", 30.0, 200.0, float(t_data.get('weight', 65.0)), step=0.1)
+                    e_activity = st.selectbox("日常活动量", ["几乎不运动", "轻度活动", "中度活动"], index=["几乎不运动", "轻度活动", "中度活动"].index(t_data.get('activity', '几乎不运动')))
+                    
+                    if st.form_submit_button("📝 强制保存修改"):
+                        bmr, tdee, target, macros = calculate_metrics(e_gender, e_weight, e_height, e_age, e_activity, e_goal)
+                        users[target_to_edit].update({
+                            "gender": e_gender, "age": e_age, "height": e_height, "weight": e_weight, "activity": e_activity, 
+                            "goal": e_goal, "bmr": bmr, "tdee": tdee, "target": target, "macros": macros
+                        })
+                        save_data(users, USERS_FILE)
+                        st.success(f"已更新 {target_to_edit} 的档案！")
+                        st.rerun()
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button(f"🗑️ 删除用户 '{target_to_edit}'", type="primary"):
+                    del users[target_to_edit]
+                    if target_to_edit in records:
+                        del records[target_to_edit]
+                    save_data(users, USERS_FILE)
+                    save_data(records, RECORDS_FILE)
+                    st.success("已删除该档案！")
+                    st.rerun()
+
 if not users:
     st.info("👋 欢迎！请先在左侧建立身体档案。")
     st.stop()
@@ -225,9 +310,12 @@ if not users:
 if selected_user and selected_user != "➕ 新建身体档案...":
     u_data = users[selected_user]
     
+    # 根据用户所在时区获取今天的日期字符串和星期几
+    today_str, current_weekday = get_user_timezone_date(selected_user)
+    
     # ================= 每周一更新体重提醒 =================
-    if datetime.date.today().weekday() == 0:
-        st.warning("📅 **今天是周一！** 新的一周，为了让 AI 监控更精准，请记录一下最新体重吧！")
+    if current_weekday == 0:
+        st.warning(f"📅 **今天是{selected_user}时区的周一！** 新的一周，为了让 AI 监控更精准，请记录一下最新体重吧！")
         with st.expander("⚖️ 更新本周体重", expanded=False):
             new_weight = st.number_input("最新空腹体重 (kg)", value=float(u_data['weight']), step=0.1)
             if st.button("更新并重算计划"):
@@ -242,7 +330,7 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     if u_data['gender'] == '女':
         is_period = st.checkbox("🌸 我当前正处于生理期 (将自动调整推荐与关怀)")
 
-    today_str = str(datetime.date.today())
+    # 跨天重置逻辑：如果今天的日期不在该用户的记录里，自动创建一天的空数据（旧的按日期妥善保存在 records.json 中）
     if selected_user not in records: records[selected_user] = {}
     if today_str not in records[selected_user]:
         records[selected_user][today_str] = {"breakfast": None, "lunch": None, "dinner": None, "snacks": None, "exercise": None, "daily_nutrition_analysis": None}
@@ -263,12 +351,12 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     remaining = target - consumed + burned
     
     # ================= 数据大盘 =================
-    st.markdown("### 📊 今日全景监控")
+    st.markdown(f"### 📊 今日全景监控 (时区归属: {today_str})")
     
     if is_period:
         st.markdown("""
         <div class="period-box">
-        🌸 <b>生理期温馨提示：</b> 已自动为您增加 150 大卡的温暖预算。特殊时期不要严苛节食，AI 在点评时也会着重关注您的补铁与营养需求，请放心记录！
+            🌸 <b>生理期温馨提示：</b> 已自动为您增加 150 大卡的温暖预算。特殊时期不要严苛节食，AI 在点评时也会着重关注您的补铁与营养需求，请放心记录！
         </div>
         """, unsafe_allow_html=True)
     
@@ -322,7 +410,6 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                             contents = [prompt] + ([Image.open(uploaded_img)] if uploaded_img else [])
                             
                             try:
-                                # 这里替换成了我们的自动调度函数
                                 res_text = safe_generate_content(contents)
                                 json_match = re.search(r'\{[\s\S]*\}', res_text)
                                 if json_match:
@@ -331,24 +418,23 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                                     res = {"food": meal_input, "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": "AI 返回格式有误。"}
                             except Exception as e:
                                 res = {"food": "解析失败", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": f"API 错误: {str(e)}"}
-                                
+                            
                             daily[meal_key] = res
                             save_data(records, RECORDS_FILE)
                             st.rerun()
-                            
+            
             with tab2:
                 exercise_input = st.text_area("今天做了什么运动？", height=100)
                 if st.button("🔥 计算消耗"):
                     with st.spinner("计算中..."):
                         prompt_ex = f"用户({u_data['weight']}kg)运动: {exercise_input}。返回纯JSON: {{\"burned\": 整数, \"analysis\": \"点评\"}}"
                         try:
-                            # 这里也替换成了自动调度函数
                             res_text = safe_generate_content(prompt_ex)
                             json_match = re.search(r'\{[\s\S]*\}', res_text)
                             res = json.loads(json_match.group()) if json_match else {"burned": 0, "analysis": "解析失败"}
                         except Exception:
                             res = {"burned": 0, "analysis": "错误"}
-                            
+                        
                         daily['exercise'] = {"text": exercise_input, "burned_calories": res.get("burned", 0), "analysis": res.get("analysis", "")}
                         save_data(records, RECORDS_FILE)
                         st.rerun()
@@ -377,7 +463,6 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                     with st.spinner("正在生成今日营养元素透视报告..."):
                         period_note = "【特别提醒：该女生正处于生理期】" if is_period else ""
                         prompt = f"用户今日饮食：{str(meals_dict)}。目标:{u_data.get('goal','减脂')}。{period_note} 请作为高级营养师分析今天营养摄入比例是否合理，重点指出缺乏的微量元素/宏量元素，并给出明确的补足建议。"
-                        # 同样替换为调度函数
                         daily['daily_nutrition_analysis'] = safe_generate_content(prompt)
                         save_data(records, RECORDS_FILE)
             
@@ -396,5 +481,4 @@ if st.button("📈 生成当月 AI 深度诊断报告"):
         with st.spinner("AI 正在深度挖掘未来规划报告..."):
             u_data = users[selected_user]
             prompt = f"高级身材管理专家。用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})打卡日志：{json.dumps(all_data, ensure_ascii=False)}。出具专业复盘与次月调整方案(必须包含致命问题诊断和具体采购建议)。"
-            # 同样替换为调度函数
             st.write(safe_generate_content(prompt))
