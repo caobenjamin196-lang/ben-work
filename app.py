@@ -266,20 +266,5 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     m1, m2, m3 = st.columns(3)
     with m1:
         st.caption(f"🍗 蛋白质 ({p_sum}/{target_macros['protein']}g)")
-        st.progress(min(p_sum/(target_macros['protein']+0.01), 1.0))
-    with m2:
-        st.caption(f"🍚 碳水 ({c_sum}/{target_macros['carbs']}g)")
-        st.progress(min(c_sum/(target_macros['carbs']+0.01), 1.0))
-    with m3:
-        st.caption(f"🥑 脂肪 ({f_sum}/{target_macros['fat']}g)")
-        st.progress(min(f_sum/(target_macros['fat']+0.01), 1.0))
-
-    col_left, col_right = st.columns([1, 1], gap="large")
-    
-    with col_left:
-        with st.container():
-            st.markdown("### 📸 记录饮食与运动")
-            tab1, tab2 = st.tabs(["🍽️ 记饮食", "🏃 记运动"])
-            
-           
+        st.progress(min
 ...(truncated)...
