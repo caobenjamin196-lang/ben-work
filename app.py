@@ -55,40 +55,6 @@ def get_base64_media(filename):
 # 加载边角装饰图片及加载动画素材
 dog_gif_b64 = get_base64_media("dog.gif")
 dog1_jpg_b64 = get_base64_media("dog 1.jpeg")
-dog3_mp4_b64 = get_base64_media("dog 3.mp4")
-
-# ================= 自定义轻量级加载动画 (修复Safari白屏，不遮挡，无虚化) =================
-def show_custom_loader(message):
-    placeholder = st.empty()
-    placeholder.markdown(f'''
-    <div style="position: fixed; bottom: 40px; right: 40px; z-index: 999999; 
-                background: rgba(255, 255, 255, 0.95); border: 3px solid #10b981;
-                padding: 15px 25px; border-radius: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); 
-                display: flex; flex-direction: column; align-items: center; justify-content: center;
-                animation: slideIn 0.3s ease-out;">
-        
-        <div style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; 
-                    display: flex; justify-content: center; align-items: center; background: #f8fafc;">
-            <video autoplay loop muted playsinline webkit-playsinline style="width: 110%; height: 110%; object-fit: cover;">
-                <source src="data:video/mp4;base64,{dog3_mp4_b64}" type="video/mp4">
-            </video>
-        </div>
-        
-        <div style="color: #047857; margin-top: 12px; font-weight: 900; font-size: 1.05rem; text-align: center;">
-            {message}
-        </div>
-    </div>
-    <style>
-        @keyframes slideIn {{
-            from {{ transform: translateY(50px) scale(0.9); opacity: 0; }}
-            to {{ transform: translateY(0) scale(1); opacity: 1; }}
-        }}
-    </style>
-    ''', unsafe_allow_html=True)
-    
-    # 极短的暂停，因为没有了复杂的虚化运算，0.1秒足以让轻量级卡片弹出
-    time.sleep(0.1) 
-    return placeholder
 
 # ================= 动态背景与边缘虚化遮罩注入 =================
 def inject_dynamic_bg(weekday_index):
@@ -119,7 +85,7 @@ def inject_dynamic_bg(weekday_index):
         <div class="bg-vignette"></div>
         ''', unsafe_allow_html=True)
 
-# ================= 全局 CSS 深度优化 (修复图标重叠 Bug、注入 3D 质感按钮) =================
+# ================= 全局 CSS 深度优化 =================
 st.markdown("""
 <style>
     /* 引入圆润可爱的字体集 */
@@ -360,7 +326,6 @@ with st.sidebar:
     selected_user = st.selectbox("当前使用者", user_names + ["➕ 新建身体档案..."], index=0 if user_names else len(user_names))
 
     if selected_user == "➕ 新建身体档案...":
-        # 如果未选定用户，以系统当前时间注入背景
         inject_dynamic_bg(datetime.datetime.now().weekday())
         
         with st.form("new_user_form"):
@@ -377,7 +342,7 @@ with st.sidebar:
                 users[new_name] = {
                     "gender": gender, "age": age, "height": height, "weight": weight, "activity": activity, 
                     "goal": goal, "bmr": bmr, "tdee": tdee, "target": target, "macros": macros,
-                    "period": {"is_active": False, "last_start": None, "last_end": None, "cycle_length": 28} # 初始化生理期数据
+                    "period": {"is_active": False, "last_start": None, "last_end": None, "cycle_length": 28}
                 }
                 save_data(users, USERS_FILE)
                 st.rerun()
@@ -404,18 +369,14 @@ with st.sidebar:
             
             if target_to_edit:
                 t_data = users[target_to_edit]
-                
                 g_opts = ["男", "女"]
-                g_val = t_data.get('gender', '男')
-                g_idx = g_opts.index(g_val) if g_val in g_opts else 0
+                g_idx = g_opts.index(t_data.get('gender', '男')) if t_data.get('gender', '男') in g_opts else 0
                 
                 goal_opts = ["减脂", "营养监测/维持健康", "增肌"]
-                goal_val = t_data.get('goal', '减脂')
-                goal_idx = goal_opts.index(goal_val) if goal_val in goal_opts else 0
+                goal_idx = goal_opts.index(t_data.get('goal', '减脂')) if t_data.get('goal', '减脂') in goal_opts else 0
                 
                 act_opts = ["几乎不运动", "轻度活动", "中度活动"]
-                act_val = t_data.get('activity', '几乎不运动')
-                act_idx = act_opts.index(act_val) if act_val in act_opts else 0
+                act_idx = act_opts.index(t_data.get('activity', '几乎不运动')) if t_data.get('activity', '几乎不运动') in act_opts else 0
 
                 with st.form("edit_user_form"):
                     e_gender = st.selectbox("性别", g_opts, index=g_idx)
@@ -451,11 +412,7 @@ if not users:
 
 if selected_user and selected_user != "➕ 新建身体档案...":
     u_data = users[selected_user]
-    
-    # 动态时区检测，拿到该用户当地的今天日期
     today_str, current_weekday, today_date = get_user_timezone_date(selected_user)
-    
-    # 根据用户所在时区，加载今日专属壁纸
     inject_dynamic_bg(current_weekday)
     
     # ================= 每周一更新体重提醒 =================
@@ -577,7 +534,6 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                 meal_type = st.radio("当前餐段", ["早餐", "午餐", "晚餐", "零食/加餐"], horizontal=True)
                 meal_key = {"早餐": "breakfast", "午餐": "lunch", "晚餐": "dinner", "零食/加餐": "snacks"}[meal_type]
                 
-                # 动态 Key 机制：切换餐段时系统会自动清空上一餐段的内容
                 uploaded_imgs = st.file_uploader("上传美食照片 (可多图上传，支持 500MB 以内)", type=["jpg", "png", "webp"], accept_multiple_files=True, key=f"imgs_{meal_type}_{today_str}")
                 meal_input = st.text_area("补充文字说明 (例如：油很大，半碗饭)", height=100, key=f"txt_{meal_type}_{today_str}")
                 
@@ -585,53 +541,52 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                     if not meal_input and not uploaded_imgs: 
                         st.error("请传图或输入文字描述！")
                     else:
-                        loader_ui = show_custom_loader("AI 营养师正在精准分析食物元素...")
-                        period_prompt = "【特别提醒：用户目前处于生理期，请在点评时额外关注是否有补铁、暖身需求，并避免推荐寒凉食物。】" if is_period else ""
-                        prompt = f"""
-                        用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})记录了一顿 {meal_type}。
-                        补充说明: {meal_input or '无'}。
-                        {period_prompt}
-                        请识别所有提供的食物图片并估算热量和三大营养素。
-                        务必返回纯 JSON，不包含任何外部文字或Markdown框！格式严格如下：
-                        {{"food": "识别出的食物及分量", "calories": 整数, "protein": 蛋白质克数整数, "carbs": 碳水克数整数, "fat": 脂肪克数整数, "analysis": "简短且专业的营养点评"}}
-                        """
-                        contents = [prompt]
-                        if uploaded_imgs:
-                            for img in uploaded_imgs:
-                                contents.append(Image.open(img))
-                        
-                        try:
-                            res_text = safe_generate_content(contents)
-                            json_match = re.search(r'\{[\s\S]*\}', res_text)
-                            if json_match:
-                                res = json.loads(json_match.group())
-                            else:
-                                res = {"food": meal_input, "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": "AI 返回格式有误。"}
-                        except Exception as e:
-                            res = {"food": "解析失败", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": f"API 错误: {str(e)}"}
-                        
-                        # 分析完毕后清除动画并重载页面
-                        loader_ui.empty()
-                        daily[meal_key] = res
-                        save_data(records, RECORDS_FILE)
-                        st.rerun()
+                        # 还原为 Streamlit 官方原生、最稳定的 Loading Spinner
+                        with st.spinner("AI 营养师正在精准分析食物元素..."):
+                            period_prompt = "【特别提醒：用户目前处于生理期，请在点评时额外关注是否有补铁、暖身需求，并避免推荐寒凉食物。】" if is_period else ""
+                            prompt = f"""
+                            用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})记录了一顿 {meal_type}。
+                            补充说明: {meal_input or '无'}。
+                            {period_prompt}
+                            请识别所有提供的食物图片并估算热量和三大营养素。
+                            务必返回纯 JSON，不包含任何外部文字或Markdown框！格式严格如下：
+                            {{"food": "识别出的食物及分量", "calories": 整数, "protein": 蛋白质克数整数, "carbs": 碳水克数整数, "fat": 脂肪克数整数, "analysis": "简短且专业的营养点评"}}
+                            """
+                            contents = [prompt]
+                            if uploaded_imgs:
+                                for img in uploaded_imgs:
+                                    contents.append(Image.open(img))
+                            
+                            try:
+                                res_text = safe_generate_content(contents)
+                                json_match = re.search(r'\{[\s\S]*\}', res_text)
+                                if json_match:
+                                    res = json.loads(json_match.group())
+                                else:
+                                    res = {"food": meal_input, "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": "AI 返回格式有误。"}
+                            except Exception as e:
+                                res = {"food": "解析失败", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": f"API 错误: {str(e)}"}
+                            
+                            daily[meal_key] = res
+                            save_data(records, RECORDS_FILE)
+                            st.rerun()
             
             with tab2:
                 exercise_input = st.text_area("今天做了什么运动？", height=100)
                 if st.button("🔥 计算消耗"):
-                    loader_ui = show_custom_loader("正在核算运动卡路里...")
-                    prompt_ex = f"用户({u_data['weight']}kg)运动: {exercise_input}。返回纯JSON: {{\"burned\": 整数, \"analysis\": \"点评\"}}"
-                    try:
-                        res_text = safe_generate_content(prompt_ex)
-                        json_match = re.search(r'\{[\s\S]*\}', res_text)
-                        res = json.loads(json_match.group()) if json_match else {"burned": 0, "analysis": "解析失败"}
-                    except Exception:
-                        res = {"burned": 0, "analysis": "错误"}
-                    
-                    loader_ui.empty()
-                    daily['exercise'] = {"text": exercise_input, "burned_calories": res.get("burned", 0), "analysis": res.get("analysis", "")}
-                    save_data(records, RECORDS_FILE)
-                    st.rerun()
+                    # 还原为官方稳定加载动画
+                    with st.spinner("正在核算运动卡路里..."):
+                        prompt_ex = f"用户({u_data['weight']}kg)运动: {exercise_input}。返回纯JSON: {{\"burned\": 整数, \"analysis\": \"点评\"}}"
+                        try:
+                            res_text = safe_generate_content(prompt_ex)
+                            json_match = re.search(r'\{[\s\S]*\}', res_text)
+                            res = json.loads(json_match.group()) if json_match else {"burned": 0, "analysis": "解析失败"}
+                        except Exception:
+                            res = {"burned": 0, "analysis": "错误"}
+                        
+                        daily['exercise'] = {"text": exercise_input, "burned_calories": res.get("burned", 0), "analysis": res.get("analysis", "")}
+                        save_data(records, RECORDS_FILE)
+                        st.rerun()
 
     with col_right:
         with st.container():
@@ -654,13 +609,13 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                 if not meals_dict:
                     st.warning("今天还没有记录足够的饮食哦！")
                 else:
-                    loader_ui = show_custom_loader("正在生成今日营养元素透视报告...")
-                    period_note = "【特别提醒：该女生正处于生理期】" if is_period else ""
-                    prompt = f"用户今日饮食：{str(meals_dict)}。目标:{u_data.get('goal','减脂')}。{period_note} 请作为高级营养师分析今天营养摄入比例是否合理，重点指出缺乏的微量元素/宏量元素，并给出明确的补足建议。"
-                    daily['daily_nutrition_analysis'] = safe_generate_content(prompt)
-                    save_data(records, RECORDS_FILE)
-                    loader_ui.empty()
-                    st.rerun()
+                    # 还原为官方稳定加载动画
+                    with st.spinner("正在生成今日营养元素透视报告..."):
+                        period_note = "【特别提醒：该女生正处于生理期】" if is_period else ""
+                        prompt = f"用户今日饮食：{str(meals_dict)}。目标:{u_data.get('goal','减脂')}。{period_note} 请作为高级营养师分析今天营养摄入比例是否合理，重点指出缺乏的微量元素/宏量元素，并给出明确的补足建议。"
+                        daily['daily_nutrition_analysis'] = safe_generate_content(prompt)
+                        save_data(records, RECORDS_FILE)
+                        st.rerun()
             
             if daily.get('daily_nutrition_analysis'):
                 with st.expander("📊 查看今日详细营养缺口报告", expanded=True):
@@ -670,7 +625,6 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     st.markdown("---")
     st.markdown("### 🕰️ 往日餐饮归档与修改")
     with st.expander("点击展开：查看或修改历史记录（每日24点自动归档）", expanded=False):
-        # 筛选出非今天的历史日期并倒序排列
         past_dates = sorted([d for d in records[selected_user].keys() if d != today_str], reverse=True)
         
         if not past_dates:
@@ -685,7 +639,6 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                     if archived_data.get(m_key):
                         with st.container():
                             st.markdown(f"**{m_name}**")
-                            # 布局比例：食物文本框占大头，宏量营养素各占一份，保存按钮在最右侧
                             c_txt, c_cal, c_pro, c_car, c_fat, c_btn = st.columns([3.5, 1, 1, 1, 1, 1.5])
                             e_food = c_txt.text_input("内容", value=archived_data[m_key].get('food', ''), key=f"ef_{sel_date}_{m_key}", label_visibility="collapsed")
                             e_cal = c_cal.number_input("热量", value=int(archived_data[m_key].get('calories', 0)), key=f"ec_{sel_date}_{m_key}", label_visibility="collapsed")
@@ -710,8 +663,8 @@ if selected_user and selected_user != "➕ 新建身体档案...":
         if len(all_data) < 3: 
             st.warning("记录少于 3 天，积累更多数据再来生成报告会更准哦！")
         else:
-            loader_ui = show_custom_loader("AI 正在深度挖掘未来规划报告...")
-            prompt = f"高级身材管理专家。用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})打卡日志：{json.dumps(all_data, ensure_ascii=False)}。出具专业复盘与次月调整方案(必须包含致命问题诊断和具体采购建议)。"
-            report_res = safe_generate_content(prompt)
-            loader_ui.empty()
-            st.write(report_res)
+            # 还原为官方稳定加载动画
+            with st.spinner("AI 正在深度挖掘未来规划报告..."):
+                prompt = f"高级身材管理专家。用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})打卡日志：{json.dumps(all_data, ensure_ascii=False)}。出具专业复盘与次月调整方案(必须包含致命问题诊断和具体采购建议)。"
+                report_res = safe_generate_content(prompt)
+                st.write(report_res)
