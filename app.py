@@ -13,7 +13,7 @@ try:
 except ImportError:
     import pytz 
 
-# ================= 🚨 页面配置 =================
+# =================  页面配置 =================
 st.set_page_config(page_title="🍏 AI 减脂与营养监督", layout="wide", initial_sidebar_state="expanded")
 
 # ================= 访问权限控制 =================
@@ -23,7 +23,7 @@ def check_password():
         st.session_state["password_correct"] = False
     
     if not st.session_state["password_correct"]:
-        st.markdown("<h2 style='text-align: center; margin-top: 50px;'>🔒 私人内测，请输入邀请码</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; margin-top: 50px; font-weight: 800;'>🔒 私人内测，请输入邀请码</h2>", unsafe_allow_html=True)
         pwd = st.text_input("邀请码", type="password", key="pwd_input")
         if st.button("🔑 进入系统"):
             if pwd == VALID_PASSWORD:
@@ -58,25 +58,41 @@ dog_gif_b64 = get_base64_media("dog.gif")
 dog1_jpg_b64 = get_base64_media("dog 1.jpeg")
 dog3_mp4_b64 = get_base64_media("dog 3.mp4")
 
-# ================= 自定义加载动画组件 (替代 st.spinner) =================
+# ================= 自定义沉浸式加载动画组件 (全屏虚化+动图边缘融合) =================
 def show_custom_loader(message):
     placeholder = st.empty()
     with placeholder.container():
         st.markdown(f'''
-        <div style="display: flex; justify-content: center; align-items: center; flex-direction: column; padding: 30px; background: rgba(255,255,255,0.7); border-radius: 20px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.6); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15); margin: 20px 0;">
-            <video autoplay loop muted playsinline width="160" style="border-radius: 15px;">
-                <source src="data:video/mp4;base64,{dog3_mp4_b64}" type="video/mp4">
-            </video>
-            <h4 style="color: #059669; margin-top: 20px; font-weight: 600; text-align: center;">{message}</h4>
+        <style>
+            /* 隐藏顶部白边和默认 header */
+            header {{ z-index: 0 !important; }}
+        </style>
+        <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
+                    background: rgba(255, 255, 255, 0.55); 
+                    backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); 
+                    z-index: 99999; display: flex; flex-direction: column; justify-content: center; align-items: center; margin:0; padding:0;">
+            
+            <div style="position: relative; width: 260px; height: 260px; display: flex; justify-content: center; align-items: center;">
+                <video autoplay loop muted playsinline width="220" 
+                       style="border-radius: 50%; 
+                              mask-image: radial-gradient(circle, rgba(0,0,0,1) 45%, rgba(0,0,0,0) 70%); 
+                              -webkit-mask-image: -webkit-radial-gradient(circle, rgba(0,0,0,1) 45%, rgba(0,0,0,0) 70%);">
+                    <source src="data:video/mp4;base64,{dog3_mp4_b64}" type="video/mp4">
+                </video>
+            </div>
+            
+            <h3 style="color: #047857; margin-top: -10px; font-weight: 900; text-align: center; font-size: 1.6rem; 
+                       text-shadow: 0 2px 8px rgba(255,255,255,0.9), 0 0 15px rgba(255,255,255,0.8); z-index: 100000;">
+                {message}
+            </h3>
         </div>
         ''', unsafe_allow_html=True)
     return placeholder
 
-# ================= 动态背景与虚化遮罩注入 =================
+# ================= 动态背景与边缘虚化遮罩注入 =================
 def inject_dynamic_bg(weekday_index):
     # 7天轮换的素材列表 (0=周一, 6=周日)
     bg_filenames = ["dog 4.jpg", "dog 5.jpg", "dog 5.gif", "dog 6.gif", "dog 8.gif", "dog 9.gif", "dog 10.gif"]
-    # 防止索引越界
     safe_index = weekday_index % 7 
     current_bg_filename = bg_filenames[safe_index]
     current_bg_b64 = get_base64_media(current_bg_filename)
@@ -95,7 +111,7 @@ def inject_dynamic_bg(weekday_index):
             /* 边缘虚化遮罩：消除拼接感，让四周柔和融入底色 */
             .bg-vignette {{
                 position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                background: radial-gradient(circle, rgba(247,249,252,0) 25%, rgba(247,249,252,0.95) 100%);
+                background: radial-gradient(circle, rgba(247,249,252,0) 20%, rgba(247,249,252,0.95) 100%);
                 z-index: -1; pointer-events: none;
             }}
         </style>
@@ -103,41 +119,81 @@ def inject_dynamic_bg(weekday_index):
         <div class="bg-vignette"></div>
         ''', unsafe_allow_html=True)
 
-# 默认全局 CSS 美化
+# ================= 全局 CSS 美化 (圆润可爱字体、加粗加深、透明度提升) =================
 st.markdown("""
 <style>
+    /* 引入圆润可爱的字体集 */
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=Varela+Round&display=swap');
+    
+    html, body, [class*="css"], [class*="st-"] {
+        font-family: 'Nunito', 'Varela Round', 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
+        color: #1f2937 !important; /* 字体整体加深 */
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        font-weight: 900 !important;
+        color: #111827 !important; /* 标题颜色更深更粗 */
+        letter-spacing: 0.5px;
+    }
+
+    p, span, label, div, .stMarkdown {
+        font-weight: 700; /* 全局基础字体适度加粗 */
+    }
+
+    strong {
+        font-weight: 900 !important;
+        color: #065f46 !important; /* 强调文字使用更深的墨绿色 */
+    }
+
     .stApp > header { background-color: transparent !important; }
+    
     .stApp .main .block-container {
-        background: rgba(255, 255, 255, 0.85) !important;
-        border-radius: 20px !important;
+        /* 提升背景的不透明度至 0.93，确保在复杂背景下字迹依然清晰 */
+        background: rgba(255, 255, 255, 0.93) !important;
+        border-radius: 28px !important; /* 增加圆角弧度，变得更可爱 */
         padding: 3rem 2rem !important;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15) !important;
-        backdrop-filter: blur(16px) !important;
-        -webkit-backdrop-filter: blur(16px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.4) !important;
+        box-shadow: 0 10px 40px 0 rgba(31, 38, 135, 0.22) !important;
+        backdrop-filter: blur(25px) !important;
+        -webkit-backdrop-filter: blur(25px) !important;
+        border: 2px solid rgba(255, 255, 255, 0.7) !important;
         max-width: 1200px !important;
         margin-top: 2rem !important;
         z-index: 10;
         position: relative;
     }
-    section[data-testid="stSidebar"] { background-color: rgba(255, 255, 255, 0.95) !important; z-index: 100;}
-    div[data-testid="stMetricValue"] { color: #10b981; font-weight: bold; }
+    
+    section[data-testid="stSidebar"] { background-color: rgba(255, 255, 255, 0.96) !important; z-index: 100;}
+    div[data-testid="stMetricValue"] { color: #059669; font-weight: 900 !important; font-size: 2.3rem !important;}
+    div[data-testid="stMetricLabel"] { font-weight: 800 !important; color: #4b5563 !important; }
+    
+    /* 按钮更加饱满、圆润 */
     .stButton > button {
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white; border: none; border-radius: 8px;
-        padding: 0.6rem 1rem; font-weight: 600; width: 100%;
+        color: white !important; 
+        border: none; 
+        border-radius: 20px !important; /* 极致圆润的按钮 */
+        padding: 0.6rem 1rem; 
+        font-weight: 800 !important; 
+        font-size: 1.05rem !important;
+        width: 100%;
         transition: all 0.3s ease;
+        box-shadow: 0 4px 8px -1px rgba(16,185,129,0.35);
     }
-    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 5px 10px -3px rgba(16,185,129,0.3); color: white;}
+    .stButton > button:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 10px 20px -3px rgba(16,185,129,0.45); color: white !important;}
+    
     .info-box {
-        background-color: #e0f2fe; color: #0369a1; padding: 12px 16px;
-        border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
-        border-left: 4px solid #0ea5e9;
+        background-color: #f0f9ff; color: #0369a1; padding: 18px;
+        border-radius: 18px; font-size: 1.05rem; line-height: 1.6; margin-bottom: 20px;
+        border-left: 8px solid #0ea5e9;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     }
     .period-box {
-        background-color: #fce7f3; color: #be185d; padding: 12px 16px;
-        border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
-        border-left: 4px solid #f43f5e;
+        background-color: #fff1f2; color: #be185d; padding: 18px;
+        border-radius: 18px; font-size: 1.05rem; line-height: 1.6; margin-bottom: 20px;
+        border-left: 8px solid #f43f5e;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     }
     .bg-pet-left {
         position: fixed; bottom: 10px; left: 10px; width: 350px; 
@@ -150,7 +206,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 注入边角装饰图 (调整了透明度以免抢背景风头)
+# 注入边角装饰图
 if dog_gif_b64:
     st.markdown(f'<img src="data:image/gif;base64,{dog_gif_b64}" class="bg-pet-left">', unsafe_allow_html=True)
 if dog1_jpg_b64:
@@ -173,7 +229,7 @@ if not api_key and os.path.exists(".env"):
         pass
 
 st.title("✨ AI 减脂与营养全能监督员")
-st.markdown("<p style='text-align: center; color: #6b7280; font-size: 1.1rem; margin-top: -15px; margin-bottom: 20px;'>深度营养监测 | 智能热量账本 | 生理期关怀</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #6b7280; font-size: 1.15rem; font-weight: 700; margin-top: -15px; margin-bottom: 20px;'>深度营养监测 | 智能热量账本 | 生理期关怀</p>", unsafe_allow_html=True)
 
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/avocado.png", width=60)
