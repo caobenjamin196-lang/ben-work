@@ -4,6 +4,7 @@ import os
 import datetime
 import re
 import base64
+import time
 import google.generativeai as genai
 from PIL import Image
 
@@ -58,35 +59,36 @@ dog_gif_b64 = get_base64_media("dog.gif")
 dog1_jpg_b64 = get_base64_media("dog 1.jpeg")
 dog3_mp4_b64 = get_base64_media("dog 3.mp4")
 
-# ================= 自定义沉浸式加载动画组件 (全屏虚化+动图边缘融合) =================
+# ================= 自定义沉浸式加载动画组件 (全屏虚化+高兼容性动图) =================
 def show_custom_loader(message):
     placeholder = st.empty()
-    with placeholder.container():
-        st.markdown(f'''
-        <style>
-            /* 隐藏顶部白边和默认 header */
-            header {{ z-index: 0 !important; }}
-        </style>
-        <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
-                    background: rgba(255, 255, 255, 0.55); 
-                    backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); 
-                    z-index: 99999; display: flex; flex-direction: column; justify-content: center; align-items: center; margin:0; padding:0;">
-            
-            <div style="position: relative; width: 260px; height: 260px; display: flex; justify-content: center; align-items: center;">
-                <video autoplay loop muted playsinline width="220" 
-                       style="border-radius: 50%; 
-                              mask-image: radial-gradient(circle, rgba(0,0,0,1) 45%, rgba(0,0,0,0) 70%); 
-                              -webkit-mask-image: -webkit-radial-gradient(circle, rgba(0,0,0,1) 45%, rgba(0,0,0,0) 70%);">
-                    <source src="data:video/mp4;base64,{dog3_mp4_b64}" type="video/mp4">
-                </video>
-            </div>
-            
-            <h3 style="color: #047857; margin-top: -10px; font-weight: 900; text-align: center; font-size: 1.6rem; 
-                       text-shadow: 0 2px 8px rgba(255,255,255,0.9), 0 0 15px rgba(255,255,255,0.8); z-index: 100000;">
-                {message}
-            </h3>
+    # 修复：直接使用 placeholder.markdown 避免 Streamlit 容器自带的背景色干扰
+    placeholder.markdown(f'''
+    <style>
+        /* 隐藏顶部白边和默认 header */
+        header {{ z-index: 0 !important; }}
+    </style>
+    <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
+                background: rgba(255, 255, 255, 0.65); 
+                backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); 
+                z-index: 999999; display: flex; flex-direction: column; justify-content: center; align-items: center; margin:0; padding:0;">
+        
+        <div style="width: 220px; height: 220px; border-radius: 50%; overflow: hidden; 
+                    box-shadow: 0 10px 30px rgba(16, 185, 129, 0.25); display: flex; justify-content: center; align-items: center; background: transparent;">
+            <video autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scale(1.05);">
+                <source src="data:video/mp4;base64,{dog3_mp4_b64}" type="video/mp4">
+            </video>
         </div>
-        ''', unsafe_allow_html=True)
+        
+        <h3 style="color: #047857; margin-top: 25px; font-weight: 900; text-align: center; font-size: 1.6rem; 
+                   text-shadow: 0 2px 8px rgba(255,255,255,0.9);">
+            {message}
+        </h3>
+    </div>
+    ''', unsafe_allow_html=True)
+    
+    # 核心修复：强制暂停 0.1 秒，确保浏览器有时间渲染出视频后再去执行耗时的 AI 请求
+    time.sleep(0.1) 
     return placeholder
 
 # ================= 动态背景与边缘虚化遮罩注入 =================
@@ -119,7 +121,7 @@ def inject_dynamic_bg(weekday_index):
         <div class="bg-vignette"></div>
         ''', unsafe_allow_html=True)
 
-# ================= 全局 CSS 深度优化 (修复图标重叠 Bug、注入 3D 质感按钮) =================
+# ================= 全局 CSS 深度优化 =================
 st.markdown("""
 <style>
     /* 引入圆润可爱的字体集 */
