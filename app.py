@@ -40,13 +40,11 @@ if not check_password():
 
 # ================= 读取图片/视频并转为 Base64 =================
 def get_base64_media(filename):
-    # 1. 优先尝试在当前代码所在目录寻找
     local_path = os.path.join(os.path.dirname(__file__), filename)
     if os.path.exists(local_path):
         with open(local_path, "rb") as f:
             return base64.b64encode(f.read()).decode('utf-8')
     
-    # 2. 如果当前目录没有，尝试去 Mac 桌面找 (针对本地调试)
     mac_path = os.path.expanduser(f"~/Desktop/{filename}")
     if os.path.exists(mac_path):
         with open(mac_path, "rb") as f:
@@ -59,41 +57,51 @@ dog_gif_b64 = get_base64_media("dog.gif")
 dog1_jpg_b64 = get_base64_media("dog 1.jpeg")
 dog3_mp4_b64 = get_base64_media("dog 3.mp4")
 
-# ================= 自定义沉浸式加载动画组件 (全屏虚化+高兼容性动图) =================
+# ================= 自定义沉浸式加载动画 (修复白块Bug，反向虚化背景) =================
 def show_custom_loader(message):
     placeholder = st.empty()
-    # 修复：直接使用 placeholder.markdown 避免 Streamlit 容器自带的背景色干扰
     placeholder.markdown(f'''
     <style>
-        /* 隐藏顶部白边和默认 header */
-        header {{ z-index: 0 !important; }}
+        /* 核心黑科技：当加载动画出现时，临时虚化页面上的其它组件，避开全屏覆盖导致的 Safari 白屏 Bug */
+        [data-testid="stSidebar"], 
+        header,
+        [data-testid="stMetric"],
+        [data-testid="stExpander"],
+        .stRadio,
+        .stFileUploader,
+        .stTextArea,
+        div.stButton > button:not(.loader-btn) {{
+            filter: blur(10px) opacity(0.6) !important;
+            pointer-events: none !important;
+            transition: filter 0.4s ease, opacity 0.4s ease;
+        }}
     </style>
-    <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
-                background: rgba(255, 255, 255, 0.65); 
-                backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); 
-                z-index: 999999; display: flex; flex-direction: column; justify-content: center; align-items: center; margin:0; padding:0;">
+    
+    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; 
+                padding: 30px 0; margin: 10px 0; animation: fadeIn 0.4s ease-out; z-index: 99999;">
         
-        <div style="width: 220px; height: 220px; border-radius: 50%; overflow: hidden; 
-                    box-shadow: 0 10px 30px rgba(16, 185, 129, 0.25); display: flex; justify-content: center; align-items: center; background: transparent;">
-            <video autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scale(1.05);">
+        <div style="position: relative; width: 280px; height: 280px; display: flex; justify-content: center; align-items: center;">
+            <video autoplay loop muted playsinline webkit-playsinline 
+                   style="width: 100%; height: 100%; object-fit: cover; 
+                          -webkit-mask-image: -webkit-radial-gradient(center, ellipse cover, rgba(0,0,0,1) 35%, rgba(0,0,0,0) 68%);
+                          mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 35%, rgba(0,0,0,0) 68%);">
                 <source src="data:video/mp4;base64,{dog3_mp4_b64}" type="video/mp4">
             </video>
         </div>
         
-        <h3 style="color: #047857; margin-top: 25px; font-weight: 900; text-align: center; font-size: 1.6rem; 
-                   text-shadow: 0 2px 8px rgba(255,255,255,0.9);">
+        <h3 style="color: #047857; margin-top: 5px; font-weight: 900; text-align: center; font-size: 1.5rem; 
+                   text-shadow: 0 2px 10px rgba(255,255,255,0.9), 0 0 20px rgba(255,255,255,0.8);">
             {message}
         </h3>
     </div>
     ''', unsafe_allow_html=True)
     
-    # 核心修复：强制暂停 0.1 秒，确保浏览器有时间渲染出视频后再去执行耗时的 AI 请求
-    time.sleep(0.1) 
+    # 延长等待时间至 0.5 秒，给浏览器留出充足时间解码视频并渲染画面，彻底解决不出图的问题
+    time.sleep(0.5) 
     return placeholder
 
 # ================= 动态背景与边缘虚化遮罩注入 =================
 def inject_dynamic_bg(weekday_index):
-    # 7天轮换的素材列表 (0=周一, 6=周日)
     bg_filenames = ["dog 4.jpg", "dog 5.jpg", "dog 5.gif", "dog 6.gif", "dog 8.gif", "dog 9.gif", "dog 10.gif"]
     safe_index = weekday_index % 7 
     current_bg_filename = bg_filenames[safe_index]
@@ -121,7 +129,7 @@ def inject_dynamic_bg(weekday_index):
         <div class="bg-vignette"></div>
         ''', unsafe_allow_html=True)
 
-# ================= 全局 CSS 深度优化 =================
+# ================= 全局 CSS 深度优化 (修复图标重叠 Bug、注入 3D 质感按钮) =================
 st.markdown("""
 <style>
     /* 引入圆润可爱的字体集 */
