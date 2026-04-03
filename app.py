@@ -11,7 +11,7 @@ from PIL import Image
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
-    import pytz # 如果报错，请确保云端 requirements.txt 里有 pytz
+    import pytz 
 
 # ================= 🚨 页面配置 =================
 st.set_page_config(page_title="🍏 AI 减脂与营养监督", layout="wide", initial_sidebar_state="expanded")
@@ -37,9 +37,9 @@ def check_password():
 if not check_password():
     st.stop()
 
-# ================= 读取图片并转为 Base64 (兼容云端和本地) =================
-def get_base64_image(filename):
-    # 1. 优先尝试在当前代码所在目录寻找 (针对部署到 Streamlit Cloud)
+# ================= 读取图片/视频并转为 Base64 =================
+def get_base64_media(filename):
+    # 1. 优先尝试在当前代码所在目录寻找
     local_path = os.path.join(os.path.dirname(__file__), filename)
     if os.path.exists(local_path):
         with open(local_path, "rb") as f:
@@ -53,9 +53,10 @@ def get_base64_image(filename):
             
     return ""
 
-# 注意：部署到云端时，请确保代码仓库里有这两个文件
-dog_gif_b64 = get_base64_image("dog.gif")
-dog1_jpg_b64 = get_base64_image("dog 1.jpeg")
+# 加载旧有背景图片和新的附件2小狗动图(mp4格式)
+dog_gif_b64 = get_base64_media("dog.gif")
+dog1_jpg_b64 = get_base64_media("dog 1.jpeg")
+dog3_mp4_b64 = get_base64_media("dog 3.mp4")
 
 # ================= 自定义 CSS 美化 =================
 st.markdown("""
@@ -98,7 +99,6 @@ st.markdown("""
         border-radius: 8px; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px;
         border-left: 4px solid #f43f5e;
     }
-    /* 桌面宠物背景图放大 (v2版本设定) */
     .bg-pet-left {
         position: fixed; bottom: 10px; left: 10px; width: 350px; 
         opacity: 0.35; z-index: 0; pointer-events: none;
@@ -107,17 +107,51 @@ st.markdown("""
         position: fixed; bottom: 10px; right: 10px; width: 350px; 
         opacity: 0.35; z-index: 0; pointer-events: none;
     }
+    /* 新增：附件2小狗的玻璃虚化悬浮效果 */
+    .glass-pet-bg {
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        width: 200px;
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 20px;
+        padding: 10px;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        z-index: 999;
+        pointer-events: none;
+    }
+    .glass-pet-bg video {
+        width: 100%;
+        border-radius: 12px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# 注入小狗背景
+# 注入旧背景图
 if dog_gif_b64:
     st.markdown(f'<img src="data:image/gif;base64,{dog_gif_b64}" class="bg-pet-left">', unsafe_allow_html=True)
 if dog1_jpg_b64:
     st.markdown(f'<img src="data:image/jpeg;base64,{dog1_jpg_b64}" class="bg-pet-right">', unsafe_allow_html=True)
 
+# 注入新增的玻璃虚化小狗动图
+if dog3_mp4_b64:
+    st.markdown(f'''
+    <div class="glass-pet-bg">
+        <video autoplay loop muted playsinline>
+            <source src="data:video/mp4;base64,{dog3_mp4_b64}" type="video/mp4">
+        </video>
+    </div>
+    ''', unsafe_allow_html=True)
+
 # ================= API Key 配置 =================
-api_key = os.environ.get("GOOGLE_API_KEY")
+try:
+    api_key = st.secrets.get("GOOGLE_API_KEY", None)
+except Exception:
+    api_key = os.environ.get("GOOGLE_API_KEY")
+
 if not api_key and os.path.exists(".env"):
     try:
         with open(".env", "r") as f:
@@ -140,7 +174,7 @@ with st.sidebar:
         try:
             with open(".env", "w") as f: 
                 f.write(f'GOOGLE_API_KEY="{api_key}"\n')
-            st.success("API Key 已保存！")
+            st.success("API Key 已保存至本地 .env！")
         except Exception:
             st.warning("环境变量只读，本次有效。")
 
@@ -207,7 +241,7 @@ def get_user_timezone_date(username):
     except Exception:
         user_now = datetime.datetime.now()
     
-    return user_now.strftime("%Y-%m-%d"), user_now.weekday()
+    return user_now.strftime("%Y-%m-%d"), user_now.weekday(), user_now.date()
 
 # ================= 核心计算公式 =================
 def calculate_metrics(gender, weight, height, age, activity, goal):
@@ -255,7 +289,8 @@ with st.sidebar:
                 bmr, tdee, target, macros = calculate_metrics(gender, weight, height, age, activity, goal)
                 users[new_name] = {
                     "gender": gender, "age": age, "height": height, "weight": weight, "activity": activity, 
-                    "goal": goal, "bmr": bmr, "tdee": tdee, "target": target, "macros": macros
+                    "goal": goal, "bmr": bmr, "tdee": tdee, "target": target, "macros": macros,
+                    "period": {"is_active": False, "last_start": None, "last_end": None, "cycle_length": 28} # 初始化生理期数据
                 }
                 save_data(users, USERS_FILE)
                 st.rerun()
@@ -283,7 +318,6 @@ with st.sidebar:
             if target_to_edit:
                 t_data = users[target_to_edit]
                 
-                # 安全获取 index，防止历史脏数据导致抛错
                 g_opts = ["男", "女"]
                 g_val = t_data.get('gender', '男')
                 g_idx = g_opts.index(g_val) if g_val in g_opts else 0
@@ -332,7 +366,7 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     u_data = users[selected_user]
     
     # 动态时区检测，拿到该用户当地的今天日期
-    today_str, current_weekday = get_user_timezone_date(selected_user)
+    today_str, current_weekday, today_date = get_user_timezone_date(selected_user)
     
     # ================= 每周一更新体重提醒 =================
     if current_weekday == 0:
@@ -346,17 +380,57 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                 st.success("计划已更新！")
                 st.rerun()
 
-    # ================= 女生专属生理期选项 =================
+    # ================= 🌸 智能生理期追踪闭环 =================
     is_period = False
     if u_data['gender'] == '女':
-        is_period = st.checkbox("🌸 我当前正处于生理期 (将自动调整推荐与关怀)")
+        if 'period' not in u_data:
+            u_data['period'] = {"is_active": False, "last_start": None, "last_end": None, "cycle_length": 28}
+        
+        p_data = u_data['period']
+        
+        st.markdown("### 🌸 生理期智能追踪")
+        if p_data['is_active']:
+            st.error("🩸 **您当前正处于生理期。** AI 营养师已自动介入，为您增加温暖热量预算，请注意保暖！")
+            if st.button("✅ 标记本次大姨妈已结束"):
+                p_data['is_active'] = False
+                p_data['last_end'] = today_str
+                users[selected_user]['period'] = p_data
+                save_data(users, USERS_FILE)
+                st.rerun()
+            is_period = True
+        else:
+            if p_data['last_start']:
+                last_start_dt = datetime.datetime.strptime(p_data['last_start'], "%Y-%m-%d").date()
+                next_start_dt = last_start_dt + datetime.timedelta(days=p_data['cycle_length'])
+                days_left = (next_start_dt - today_date).days
+                
+                if days_left > 3:
+                    st.info(f"⏳ 距离下一次生理期预计还有 **{days_left}** 天。")
+                elif 0 < days_left <= 3:
+                    st.warning(f"⚠️ **倒计时提醒**：距离下次生理期仅剩 **{days_left}** 天！请提前准备好保暖物资，避免寒凉食物。")
+                else:
+                    st.error(f"🚨 **到期确认**：预计生理期已经到了 (已延迟 {abs(days_left)} 天)。您的姨妈来了吗？")
+                
+                if st.button("🩸 是的，大姨妈今天来了"):
+                    p_data['is_active'] = True
+                    p_data['last_start'] = today_str
+                    users[selected_user]['period'] = p_data
+                    save_data(users, USERS_FILE)
+                    st.rerun()
+            else:
+                st.info("首次使用，当您大姨妈来临之际请在此标记，系统将自动开启下月的循环提醒。")
+                if st.button("🩸 标记今天生理期开始"):
+                    p_data['is_active'] = True
+                    p_data['last_start'] = today_str
+                    users[selected_user]['period'] = p_data
+                    save_data(users, USERS_FILE)
+                    st.rerun()
+            is_period = False
 
     # ================= 跨天重置与保存逻辑 =================
-    # 根据 today_str（时区日期）读取或创建今日数据，旧日期的数据自动冻结在 records 里
     if selected_user not in records: records[selected_user] = {}
     if today_str not in records[selected_user]:
         records[selected_user][today_str] = {"breakfast": None, "lunch": None, "dinner": None, "snacks": None, "exercise": None, "daily_nutrition_analysis": None}
-    
     if "snacks" not in records[selected_user][today_str]: records[selected_user][today_str]["snacks"] = None
     
     daily = records[selected_user][today_str]
@@ -413,9 +487,9 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                 meal_type = st.radio("当前餐段", ["早餐", "午餐", "晚餐", "零食/加餐"], horizontal=True)
                 meal_key = {"早餐": "breakfast", "午餐": "lunch", "晚餐": "dinner", "零食/加餐": "snacks"}[meal_type]
                 
-                # V2 新增：允许多选图片上传
-                uploaded_imgs = st.file_uploader("上传美食照片 (可多图上传，支持 500MB 以内)", type=["jpg", "png", "webp"], accept_multiple_files=True)
-                meal_input = st.text_area("补充文字说明 (例如：油很大，半碗饭)", height=100)
+                # 核心升级：动态 Key 机制。通过引入 meal_type 作为组件的唯一 ID，切换餐段时系统会自动清空上一餐段的内容。
+                uploaded_imgs = st.file_uploader("上传美食照片 (可多图上传，支持 500MB 以内)", type=["jpg", "png", "webp"], accept_multiple_files=True, key=f"imgs_{meal_type}_{today_str}")
+                meal_input = st.text_area("补充文字说明 (例如：油很大，半碗饭)", height=100, key=f"txt_{meal_type}_{today_str}")
                 
                 if st.button("✨ 开启 AI 深度识图分析"):
                     if not meal_input and not uploaded_imgs: 
@@ -431,7 +505,6 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                             务必返回纯 JSON，不包含任何外部文字或Markdown框！格式严格如下：
                             {{"food": "识别出的食物及分量", "calories": 整数, "protein": 蛋白质克数整数, "carbs": 碳水克数整数, "fat": 脂肪克数整数, "analysis": "简短且专业的营养点评"}}
                             """
-                            # 将所有的图片加载并拼接到 contents 列表里
                             contents = [prompt]
                             if uploaded_imgs:
                                 for img in uploaded_imgs:
@@ -497,6 +570,42 @@ if selected_user and selected_user != "➕ 新建身体档案...":
             if daily.get('daily_nutrition_analysis'):
                 with st.expander("📊 查看今日详细营养缺口报告", expanded=False):
                     st.info(daily['daily_nutrition_analysis'])
+    
+    # ================= 历史归档与修改窗口 =================
+    st.markdown("---")
+    st.markdown("### 🕰️ 往日餐饮归档与修改")
+    with st.expander("点击展开：查看或修改历史记录（每日24点自动归档）", expanded=False):
+        # 筛选出非今天的历史日期并倒序排列
+        past_dates = sorted([d for d in records[selected_user].keys() if d != today_str], reverse=True)
+        
+        if not past_dates:
+            st.info("🕒 暂无历史归档数据。每日过了当地时间 24 点后，您的旧数据会自动安全归档于此。")
+        else:
+            sel_date = st.selectbox("📅 选择要查看的归档日期", past_dates)
+            if sel_date:
+                archived_data = records[selected_user][sel_date]
+                st.caption(f"正在编辑 {sel_date} 的档案记录")
+                
+                for m_key, m_name in [("breakfast", "早餐"), ("lunch", "午餐"), ("dinner", "晚餐"), ("snacks", "零食")]:
+                    if archived_data.get(m_key):
+                        with st.container():
+                            st.markdown(f"**{m_name}**")
+                            # 布局比例：食物文本框占大头，宏量营养素各占一份，保存按钮在最右侧
+                            c_txt, c_cal, c_pro, c_car, c_fat, c_btn = st.columns([3.5, 1, 1, 1, 1, 1.5])
+                            e_food = c_txt.text_input("内容", value=archived_data[m_key].get('food', ''), key=f"ef_{sel_date}_{m_key}", label_visibility="collapsed")
+                            e_cal = c_cal.number_input("热量", value=int(archived_data[m_key].get('calories', 0)), key=f"ec_{sel_date}_{m_key}", label_visibility="collapsed")
+                            e_pro = c_pro.number_input("蛋白质", value=int(archived_data[m_key].get('protein', 0)), key=f"ep_{sel_date}_{m_key}", label_visibility="collapsed")
+                            e_car = c_car.number_input("碳水", value=int(archived_data[m_key].get('carbs', 0)), key=f"eca_{sel_date}_{m_key}", label_visibility="collapsed")
+                            e_fat = c_fat.number_input("脂肪", value=int(archived_data[m_key].get('fat', 0)), key=f"efa_{sel_date}_{m_key}", label_visibility="collapsed")
+                            
+                            if c_btn.button("💾 确认修改", key=f"btn_{sel_date}_{m_key}"):
+                                records[selected_user][sel_date][m_key].update({
+                                    'food': e_food, 'calories': e_cal, 'protein': e_pro, 'carbs': e_car, 'fat': e_fat
+                                })
+                                save_data(records, RECORDS_FILE)
+                                st.success(f"✅ {sel_date} 的 {m_name} 数据已永久更新！")
+                                st.rerun()
+                            st.divider()
 
     # ================= 月度终极报告 =================
     st.markdown("---")
