@@ -57,47 +57,37 @@ dog_gif_b64 = get_base64_media("dog.gif")
 dog1_jpg_b64 = get_base64_media("dog 1.jpeg")
 dog3_mp4_b64 = get_base64_media("dog 3.mp4")
 
-# ================= 自定义沉浸式加载动画 (修复白块Bug，反向虚化背景) =================
+# ================= 自定义轻量级加载动画 (修复Safari白屏，不遮挡，无虚化) =================
 def show_custom_loader(message):
     placeholder = st.empty()
     placeholder.markdown(f'''
-    <style>
-        /* 核心黑科技：当加载动画出现时，临时虚化页面上的其它组件，避开全屏覆盖导致的 Safari 白屏 Bug */
-        [data-testid="stSidebar"], 
-        header,
-        [data-testid="stMetric"],
-        [data-testid="stExpander"],
-        .stRadio,
-        .stFileUploader,
-        .stTextArea,
-        div.stButton > button:not(.loader-btn) {{
-            filter: blur(10px) opacity(0.6) !important;
-            pointer-events: none !important;
-            transition: filter 0.4s ease, opacity 0.4s ease;
-        }}
-    </style>
-    
-    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; 
-                padding: 30px 0; margin: 10px 0; animation: fadeIn 0.4s ease-out; z-index: 99999;">
+    <div style="position: fixed; bottom: 40px; right: 40px; z-index: 999999; 
+                background: rgba(255, 255, 255, 0.95); border: 3px solid #10b981;
+                padding: 15px 25px; border-radius: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); 
+                display: flex; flex-direction: column; align-items: center; justify-content: center;
+                animation: slideIn 0.3s ease-out;">
         
-        <div style="position: relative; width: 280px; height: 280px; display: flex; justify-content: center; align-items: center;">
-            <video autoplay loop muted playsinline webkit-playsinline 
-                   style="width: 100%; height: 100%; object-fit: cover; 
-                          -webkit-mask-image: -webkit-radial-gradient(center, ellipse cover, rgba(0,0,0,1) 35%, rgba(0,0,0,0) 68%);
-                          mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 35%, rgba(0,0,0,0) 68%);">
+        <div style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; 
+                    display: flex; justify-content: center; align-items: center; background: #f8fafc;">
+            <video autoplay loop muted playsinline webkit-playsinline style="width: 110%; height: 110%; object-fit: cover;">
                 <source src="data:video/mp4;base64,{dog3_mp4_b64}" type="video/mp4">
             </video>
         </div>
         
-        <h3 style="color: #047857; margin-top: 5px; font-weight: 900; text-align: center; font-size: 1.5rem; 
-                   text-shadow: 0 2px 10px rgba(255,255,255,0.9), 0 0 20px rgba(255,255,255,0.8);">
+        <div style="color: #047857; margin-top: 12px; font-weight: 900; font-size: 1.05rem; text-align: center;">
             {message}
-        </h3>
+        </div>
     </div>
+    <style>
+        @keyframes slideIn {{
+            from {{ transform: translateY(50px) scale(0.9); opacity: 0; }}
+            to {{ transform: translateY(0) scale(1); opacity: 1; }}
+        }}
+    </style>
     ''', unsafe_allow_html=True)
     
-    # 延长等待时间至 0.5 秒，给浏览器留出充足时间解码视频并渲染画面，彻底解决不出图的问题
-    time.sleep(0.5) 
+    # 极短的暂停，因为没有了复杂的虚化运算，0.1秒足以让轻量级卡片弹出
+    time.sleep(0.1) 
     return placeholder
 
 # ================= 动态背景与边缘虚化遮罩注入 =================
