@@ -13,7 +13,7 @@ try:
 except ImportError:
     import pytz 
 
-# =================  页面配置 =================
+# ================= 🚨 页面配置 =================
 st.set_page_config(page_title="🍏 AI 减脂与营养监督", layout="wide", initial_sidebar_state="expanded")
 
 # ================= 访问权限控制 =================
@@ -119,38 +119,44 @@ def inject_dynamic_bg(weekday_index):
         <div class="bg-vignette"></div>
         ''', unsafe_allow_html=True)
 
-# ================= 全局 CSS 美化 (圆润可爱字体、加粗加深、透明度提升) =================
+# ================= 全局 CSS 深度优化 (修复图标重叠 Bug、注入 3D 质感按钮) =================
 st.markdown("""
 <style>
     /* 引入圆润可爱的字体集 */
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=Varela+Round&display=swap');
     
-    html, body, [class*="css"], [class*="st-"] {
-        font-family: 'Nunito', 'Varela Round', 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
-        color: #1f2937 !important; /* 字体整体加深 */
+    /* 针对普通文本应用新字体，但避开系统内置的图标，彻底修复 upload / arrow 重叠乱码的 Bug */
+    html, body, div:not([class*="icon"]), p, span:not([class*="icon"]), label {
+        font-family: 'Nunito', 'Varela Round', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        color: #1f2937; 
+    }
+    
+    /* 强制恢复系统图标字体 */
+    .material-symbols-rounded, .material-icons, [data-testid="stIconMaterial"] {
+        font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
     }
     
     h1, h2, h3, h4, h5, h6 {
         font-weight: 900 !important;
-        color: #111827 !important; /* 标题颜色更深更粗 */
+        color: #111827 !important;
         letter-spacing: 0.5px;
+        font-family: 'Nunito', 'Varela Round', 'PingFang SC', sans-serif;
     }
 
-    p, span, label, div, .stMarkdown {
-        font-weight: 700; /* 全局基础字体适度加粗 */
+    p, .stMarkdown {
+        font-weight: 700; 
     }
 
     strong {
         font-weight: 900 !important;
-        color: #065f46 !important; /* 强调文字使用更深的墨绿色 */
+        color: #065f46 !important; 
     }
 
     .stApp > header { background-color: transparent !important; }
     
     .stApp .main .block-container {
-        /* 提升背景的不透明度至 0.93，确保在复杂背景下字迹依然清晰 */
         background: rgba(255, 255, 255, 0.93) !important;
-        border-radius: 28px !important; /* 增加圆角弧度，变得更可爱 */
+        border-radius: 28px !important; 
         padding: 3rem 2rem !important;
         box-shadow: 0 10px 40px 0 rgba(31, 38, 135, 0.22) !important;
         backdrop-filter: blur(25px) !important;
@@ -166,20 +172,32 @@ st.markdown("""
     div[data-testid="stMetricValue"] { color: #059669; font-weight: 900 !important; font-size: 2.3rem !important;}
     div[data-testid="stMetricLabel"] { font-weight: 800 !important; color: #4b5563 !important; }
     
-    /* 按钮更加饱满、圆润 */
-    .stButton > button {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    /* 👑 果冻 3D 质感按钮设计 (同步美化普通按钮与上传区的 Browse files 按钮) */
+    .stButton > button, [data-testid="stFileUploader"] button {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
         color: white !important; 
-        border: none; 
-        border-radius: 20px !important; /* 极致圆润的按钮 */
-        padding: 0.6rem 1rem; 
+        border: 1px solid rgba(255,255,255,0.4) !important; 
+        border-radius: 20px !important; 
+        padding: 0.6rem 1rem !important; 
         font-weight: 800 !important; 
         font-size: 1.05rem !important;
-        width: 100%;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 8px -1px rgba(16,185,129,0.35);
+        transition: all 0.3s ease !important;
+        /* 内部发光 + 外部悬浮阴影，打造玻璃果冻立体感 */
+        box-shadow: inset 0 2px 4px rgba(255,255,255,0.4), 0 4px 8px rgba(16,185,129,0.3) !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
     }
-    .stButton > button:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 10px 20px -3px rgba(16,185,129,0.45); color: white !important;}
+    .stButton > button:hover, [data-testid="stFileUploader"] button:hover { 
+        transform: translateY(-3px) scale(1.02) !important; 
+        box-shadow: inset 0 2px 4px rgba(255,255,255,0.5), 0 10px 20px -3px rgba(16,185,129,0.45) !important; 
+        color: white !important;
+    }
+
+    /* 上传组件拖拽框的质感优化 */
+    [data-testid="stFileUploaderDropzone"] {
+        background: rgba(240, 253, 244, 0.6) !important;
+        border: 2px dashed #10b981 !important;
+        border-radius: 20px !important;
+    }
     
     .info-box {
         background-color: #f0f9ff; color: #0369a1; padding: 18px;
