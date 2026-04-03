@@ -53,27 +53,67 @@ def get_base64_media(filename):
             
     return ""
 
-# 加载旧有背景图片和新的附件2小狗动图(mp4格式)
+# 加载边角装饰图片及加载动画素材
 dog_gif_b64 = get_base64_media("dog.gif")
 dog1_jpg_b64 = get_base64_media("dog 1.jpeg")
 dog3_mp4_b64 = get_base64_media("dog 3.mp4")
 
-# ================= 自定义 CSS 美化 =================
+# ================= 自定义加载动画组件 (替代 st.spinner) =================
+def show_custom_loader(message):
+    placeholder = st.empty()
+    with placeholder.container():
+        st.markdown(f'''
+        <div style="display: flex; justify-content: center; align-items: center; flex-direction: column; padding: 30px; background: rgba(255,255,255,0.7); border-radius: 20px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.6); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15); margin: 20px 0;">
+            <video autoplay loop muted playsinline width="160" style="border-radius: 15px;">
+                <source src="data:video/mp4;base64,{dog3_mp4_b64}" type="video/mp4">
+            </video>
+            <h4 style="color: #059669; margin-top: 20px; font-weight: 600; text-align: center;">{message}</h4>
+        </div>
+        ''', unsafe_allow_html=True)
+    return placeholder
+
+# ================= 动态背景与虚化遮罩注入 =================
+def inject_dynamic_bg(weekday_index):
+    # 7天轮换的素材列表 (0=周一, 6=周日)
+    bg_filenames = ["dog 4.jpg", "dog 5.jpg", "dog 5.gif", "dog 6.gif", "dog 8.gif", "dog 9.gif", "dog 10.gif"]
+    # 防止索引越界
+    safe_index = weekday_index % 7 
+    current_bg_filename = bg_filenames[safe_index]
+    current_bg_b64 = get_base64_media(current_bg_filename)
+    
+    if current_bg_b64:
+        bg_mime_type = "image/gif" if current_bg_filename.endswith(".gif") else "image/jpeg"
+        st.markdown(f'''
+        <style>
+            div.stApp {{ background: transparent !important; }}
+            .dynamic-bg {{
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background-image: url("data:{bg_mime_type};base64,{current_bg_b64}");
+                background-size: cover; background-position: center; background-repeat: no-repeat;
+                opacity: 0.85; z-index: -2;
+            }}
+            /* 边缘虚化遮罩：消除拼接感，让四周柔和融入底色 */
+            .bg-vignette {{
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: radial-gradient(circle, rgba(247,249,252,0) 25%, rgba(247,249,252,0.95) 100%);
+                z-index: -1; pointer-events: none;
+            }}
+        </style>
+        <div class="dynamic-bg"></div>
+        <div class="bg-vignette"></div>
+        ''', unsafe_allow_html=True)
+
+# 默认全局 CSS 美化
 st.markdown("""
 <style>
-    div.stApp {
-        background: url("https://raw.githubusercontent.com/openclaw/openclaw/main/docs/static/dog.png") no-repeat center center fixed !important;
-        background-color: #f7f9fc !important;
-        background-size: cover !important;
-    }
     .stApp > header { background-color: transparent !important; }
     .stApp .main .block-container {
-        background: rgba(255, 255, 255, 0.90) !important;
+        background: rgba(255, 255, 255, 0.85) !important;
         border-radius: 20px !important;
         padding: 3rem 2rem !important;
         box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15) !important;
-        backdrop-filter: blur(15px) !important;
-        -webkit-backdrop-filter: blur(15px) !important;
+        backdrop-filter: blur(16px) !important;
+        -webkit-backdrop-filter: blur(16px) !important;
         border: 1px solid rgba(255, 255, 255, 0.4) !important;
         max-width: 1200px !important;
         margin-top: 2rem !important;
@@ -101,50 +141,20 @@ st.markdown("""
     }
     .bg-pet-left {
         position: fixed; bottom: 10px; left: 10px; width: 350px; 
-        opacity: 0.35; z-index: 0; pointer-events: none;
+        opacity: 0.25; z-index: 0; pointer-events: none;
     }
     .bg-pet-right {
         position: fixed; bottom: 10px; right: 10px; width: 350px; 
-        opacity: 0.35; z-index: 0; pointer-events: none;
-    }
-    /* 新增：附件2小狗的玻璃虚化悬浮效果 */
-    .glass-pet-bg {
-        position: fixed;
-        bottom: 25px;
-        right: 25px;
-        width: 200px;
-        background: rgba(255, 255, 255, 0.15);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.4);
-        border-radius: 20px;
-        padding: 10px;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
-        z-index: 999;
-        pointer-events: none;
-    }
-    .glass-pet-bg video {
-        width: 100%;
-        border-radius: 12px;
+        opacity: 0.25; z-index: 0; pointer-events: none;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# 注入旧背景图
+# 注入边角装饰图 (调整了透明度以免抢背景风头)
 if dog_gif_b64:
     st.markdown(f'<img src="data:image/gif;base64,{dog_gif_b64}" class="bg-pet-left">', unsafe_allow_html=True)
 if dog1_jpg_b64:
     st.markdown(f'<img src="data:image/jpeg;base64,{dog1_jpg_b64}" class="bg-pet-right">', unsafe_allow_html=True)
-
-# 注入新增的玻璃虚化小狗动图
-if dog3_mp4_b64:
-    st.markdown(f'''
-    <div class="glass-pet-bg">
-        <video autoplay loop muted playsinline>
-            <source src="data:video/mp4;base64,{dog3_mp4_b64}" type="video/mp4">
-        </video>
-    </div>
-    ''', unsafe_allow_html=True)
 
 # ================= API Key 配置 =================
 try:
@@ -276,6 +286,9 @@ with st.sidebar:
     selected_user = st.selectbox("当前使用者", user_names + ["➕ 新建身体档案..."], index=0 if user_names else len(user_names))
 
     if selected_user == "➕ 新建身体档案...":
+        # 如果未选定用户，以系统当前时间注入背景
+        inject_dynamic_bg(datetime.datetime.now().weekday())
+        
         with st.form("new_user_form"):
             new_name = st.text_input("如何称呼您？")
             gender = st.selectbox("性别", ["男", "女"])
@@ -367,6 +380,9 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     
     # 动态时区检测，拿到该用户当地的今天日期
     today_str, current_weekday, today_date = get_user_timezone_date(selected_user)
+    
+    # 根据用户所在时区，加载今日专属壁纸
+    inject_dynamic_bg(current_weekday)
     
     # ================= 每周一更新体重提醒 =================
     if current_weekday == 0:
@@ -487,7 +503,7 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                 meal_type = st.radio("当前餐段", ["早餐", "午餐", "晚餐", "零食/加餐"], horizontal=True)
                 meal_key = {"早餐": "breakfast", "午餐": "lunch", "晚餐": "dinner", "零食/加餐": "snacks"}[meal_type]
                 
-                # 核心升级：动态 Key 机制。通过引入 meal_type 作为组件的唯一 ID，切换餐段时系统会自动清空上一餐段的内容。
+                # 动态 Key 机制：切换餐段时系统会自动清空上一餐段的内容
                 uploaded_imgs = st.file_uploader("上传美食照片 (可多图上传，支持 500MB 以内)", type=["jpg", "png", "webp"], accept_multiple_files=True, key=f"imgs_{meal_type}_{today_str}")
                 meal_input = st.text_area("补充文字说明 (例如：油很大，半碗饭)", height=100, key=f"txt_{meal_type}_{today_str}")
                 
@@ -495,50 +511,53 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                     if not meal_input and not uploaded_imgs: 
                         st.error("请传图或输入文字描述！")
                     else:
-                        with st.spinner("AI 营养师正在精准分析元素..."):
-                            period_prompt = "【特别提醒：用户目前处于生理期，请在点评时额外关注是否有补铁、暖身需求，并避免推荐寒凉食物。】" if is_period else ""
-                            prompt = f"""
-                            用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})记录了一顿 {meal_type}。
-                            补充说明: {meal_input or '无'}。
-                            {period_prompt}
-                            请识别所有提供的食物图片并估算热量和三大营养素。
-                            务必返回纯 JSON，不包含任何外部文字或Markdown框！格式严格如下：
-                            {{"food": "识别出的食物及分量", "calories": 整数, "protein": 蛋白质克数整数, "carbs": 碳水克数整数, "fat": 脂肪克数整数, "analysis": "简短且专业的营养点评"}}
-                            """
-                            contents = [prompt]
-                            if uploaded_imgs:
-                                for img in uploaded_imgs:
-                                    contents.append(Image.open(img))
-                            
-                            try:
-                                res_text = safe_generate_content(contents)
-                                json_match = re.search(r'\{[\s\S]*\}', res_text)
-                                if json_match:
-                                    res = json.loads(json_match.group())
-                                else:
-                                    res = {"food": meal_input, "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": "AI 返回格式有误。"}
-                            except Exception as e:
-                                res = {"food": "解析失败", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": f"API 错误: {str(e)}"}
-                            
-                            daily[meal_key] = res
-                            save_data(records, RECORDS_FILE)
-                            st.rerun()
+                        loader_ui = show_custom_loader("AI 营养师正在精准分析食物元素...")
+                        period_prompt = "【特别提醒：用户目前处于生理期，请在点评时额外关注是否有补铁、暖身需求，并避免推荐寒凉食物。】" if is_period else ""
+                        prompt = f"""
+                        用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})记录了一顿 {meal_type}。
+                        补充说明: {meal_input or '无'}。
+                        {period_prompt}
+                        请识别所有提供的食物图片并估算热量和三大营养素。
+                        务必返回纯 JSON，不包含任何外部文字或Markdown框！格式严格如下：
+                        {{"food": "识别出的食物及分量", "calories": 整数, "protein": 蛋白质克数整数, "carbs": 碳水克数整数, "fat": 脂肪克数整数, "analysis": "简短且专业的营养点评"}}
+                        """
+                        contents = [prompt]
+                        if uploaded_imgs:
+                            for img in uploaded_imgs:
+                                contents.append(Image.open(img))
+                        
+                        try:
+                            res_text = safe_generate_content(contents)
+                            json_match = re.search(r'\{[\s\S]*\}', res_text)
+                            if json_match:
+                                res = json.loads(json_match.group())
+                            else:
+                                res = {"food": meal_input, "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": "AI 返回格式有误。"}
+                        except Exception as e:
+                            res = {"food": "解析失败", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": f"API 错误: {str(e)}"}
+                        
+                        # 分析完毕后清除动画并重载页面
+                        loader_ui.empty()
+                        daily[meal_key] = res
+                        save_data(records, RECORDS_FILE)
+                        st.rerun()
             
             with tab2:
                 exercise_input = st.text_area("今天做了什么运动？", height=100)
                 if st.button("🔥 计算消耗"):
-                    with st.spinner("计算中..."):
-                        prompt_ex = f"用户({u_data['weight']}kg)运动: {exercise_input}。返回纯JSON: {{\"burned\": 整数, \"analysis\": \"点评\"}}"
-                        try:
-                            res_text = safe_generate_content(prompt_ex)
-                            json_match = re.search(r'\{[\s\S]*\}', res_text)
-                            res = json.loads(json_match.group()) if json_match else {"burned": 0, "analysis": "解析失败"}
-                        except Exception:
-                            res = {"burned": 0, "analysis": "错误"}
-                        
-                        daily['exercise'] = {"text": exercise_input, "burned_calories": res.get("burned", 0), "analysis": res.get("analysis", "")}
-                        save_data(records, RECORDS_FILE)
-                        st.rerun()
+                    loader_ui = show_custom_loader("正在核算运动卡路里...")
+                    prompt_ex = f"用户({u_data['weight']}kg)运动: {exercise_input}。返回纯JSON: {{\"burned\": 整数, \"analysis\": \"点评\"}}"
+                    try:
+                        res_text = safe_generate_content(prompt_ex)
+                        json_match = re.search(r'\{[\s\S]*\}', res_text)
+                        res = json.loads(json_match.group()) if json_match else {"burned": 0, "analysis": "解析失败"}
+                    except Exception:
+                        res = {"burned": 0, "analysis": "错误"}
+                    
+                    loader_ui.empty()
+                    daily['exercise'] = {"text": exercise_input, "burned_calories": res.get("burned", 0), "analysis": res.get("analysis", "")}
+                    save_data(records, RECORDS_FILE)
+                    st.rerun()
 
     with col_right:
         with st.container():
@@ -561,14 +580,16 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                 if not meals_dict:
                     st.warning("今天还没有记录足够的饮食哦！")
                 else:
-                    with st.spinner("正在生成今日营养元素透视报告..."):
-                        period_note = "【特别提醒：该女生正处于生理期】" if is_period else ""
-                        prompt = f"用户今日饮食：{str(meals_dict)}。目标:{u_data.get('goal','减脂')}。{period_note} 请作为高级营养师分析今天营养摄入比例是否合理，重点指出缺乏的微量元素/宏量元素，并给出明确的补足建议。"
-                        daily['daily_nutrition_analysis'] = safe_generate_content(prompt)
-                        save_data(records, RECORDS_FILE)
+                    loader_ui = show_custom_loader("正在生成今日营养元素透视报告...")
+                    period_note = "【特别提醒：该女生正处于生理期】" if is_period else ""
+                    prompt = f"用户今日饮食：{str(meals_dict)}。目标:{u_data.get('goal','减脂')}。{period_note} 请作为高级营养师分析今天营养摄入比例是否合理，重点指出缺乏的微量元素/宏量元素，并给出明确的补足建议。"
+                    daily['daily_nutrition_analysis'] = safe_generate_content(prompt)
+                    save_data(records, RECORDS_FILE)
+                    loader_ui.empty()
+                    st.rerun()
             
             if daily.get('daily_nutrition_analysis'):
-                with st.expander("📊 查看今日详细营养缺口报告", expanded=False):
+                with st.expander("📊 查看今日详细营养缺口报告", expanded=True):
                     st.info(daily['daily_nutrition_analysis'])
     
     # ================= 历史归档与修改窗口 =================
@@ -615,6 +636,8 @@ if selected_user and selected_user != "➕ 新建身体档案...":
         if len(all_data) < 3: 
             st.warning("记录少于 3 天，积累更多数据再来生成报告会更准哦！")
         else:
-            with st.spinner("AI 正在深度挖掘未来规划报告..."):
-                prompt = f"高级身材管理专家。用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})打卡日志：{json.dumps(all_data, ensure_ascii=False)}。出具专业复盘与次月调整方案(必须包含致命问题诊断和具体采购建议)。"
-                st.write(safe_generate_content(prompt))
+            loader_ui = show_custom_loader("AI 正在深度挖掘未来规划报告...")
+            prompt = f"高级身材管理专家。用户({u_data['gender']}, {u_data['weight']}kg, 目标:{u_data.get('goal','减脂')})打卡日志：{json.dumps(all_data, ensure_ascii=False)}。出具专业复盘与次月调整方案(必须包含致命问题诊断和具体采购建议)。"
+            report_res = safe_generate_content(prompt)
+            loader_ui.empty()
+            st.write(report_res)
