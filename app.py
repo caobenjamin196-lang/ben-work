@@ -265,7 +265,7 @@ def save_user_data(user_id, user_data, collection_name):
     except Exception as e:
         st.sidebar.error(f"云端同步失败: {e}")
 
-# 初始化拉取用户配置 (records 日志数据放到下方单独按需拉取，防止内存串流)
+# 初始化拉取用户配置 
 users = load_data(USERS_COLLECTION)
 
 # ================= 时区与日期计算 =================
@@ -417,7 +417,6 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     inject_dynamic_bg(current_weekday)
 
     # ================= 【核心修复：绝对数据隔离拉取】 =================
-    # 不再全局读取所有人日志，只定向拉取当前用户的日志。彻底杜绝内存串流。
     user_record_doc = db.collection(RECORDS_COLLECTION).document(selected_user).get()
     user_records = user_record_doc.to_dict() if user_record_doc.exists else {}
 
@@ -433,26 +432,47 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                 st.success("计划已更新！")
                 st.rerun()
 
-    # ================= 🌸 智能生理期追踪闭环 =================
+    # ================= 🌸 智能生理期追踪闭环 (全新升级天数追踪) =================
     is_period = False
-    if u_data['gender'] == '女':
+    if u_data.get('gender') == '女':
+        # 安全获取并初始化 period 字段，确保不会因历史遗留问题丢失
+        needs_save = False
         if 'period' not in u_data:
             u_data['period'] = {"is_active": False, "last_start": None, "last_end": None, "cycle_length": 28}
+            needs_save = True
         
         p_data = u_data['period']
         
         st.markdown("### 🌸 生理期智能追踪")
-        if p_data['is_active']:
-            st.error("🩸 **您当前正处于生理期。** AI 营养师已自动介入，为您增加温暖热量预算，请注意保暖！")
-            if st.button("✅ 标记本次大姨妈已结束", key=f"p_end_{selected_user}_{today_str}"):
+        
+        if p_data.get('is_active'):
+            # 精确计算今天是生理期的第几天
+            days_in = 1
+            if p_data.get('last_start'):
+                try:
+                    start_dt = datetime.datetime.strptime(p_data['last_start'], "%Y-%m-%d").date()
+                    days_in = (today_date - start_dt).days + 1
+                except:
+                    pass
+            
+            # 前7天每日强提醒确认，超过7天增加警示
+            if days_in <= 7:
+                st.error(f"🩸 **您当前正处于生理期（第 {days_in} 天）。** AI 营养师已自动介入，为您增加温暖热量预算，请注意保暖！")
+                st.info("🌸 **每日确认**：今天大姨妈走了吗？如果已经彻底干净，请点击下方按钮恢复正常追踪。")
+            else:
+                st.error(f"🩸 **您当前正处于生理期（第 {days_in} 天）。**")
+                st.warning("🌸 您的生理期记录已经超过 7 天啦！如果大姨妈已经彻底离开，请千万记得点击下方按钮结束本次记录哦！")
+                
+            if st.button("✅ 确认大姨妈已彻底结束", key=f"p_end_{selected_user}_{today_str}"):
                 p_data['is_active'] = False
                 p_data['last_end'] = today_str
                 users[selected_user]['period'] = p_data
                 save_user_data(selected_user, users[selected_user], USERS_COLLECTION)
+                st.success("已记录，系统恢复正常追踪模式！")
                 st.rerun()
             is_period = True
         else:
-            if p_data['last_start']:
+            if p_data.get('last_start'):
                 last_start_dt = datetime.datetime.strptime(p_data['last_start'], "%Y-%m-%d").date()
                 next_start_dt = last_start_dt + datetime.timedelta(days=p_data['cycle_length'])
                 days_left = (next_start_dt - today_date).days
@@ -479,6 +499,10 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                     save_user_data(selected_user, users[selected_user], USERS_COLLECTION)
                     st.rerun()
             is_period = False
+            
+        # 如果是老用户强行补齐字段，顺手保存一下防丢失
+        if needs_save:
+            save_user_data(selected_user, users[selected_user], USERS_COLLECTION)
 
     # ================= 跨天重置与保存逻辑 =================
     if today_str not in user_records:
@@ -574,7 +598,6 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                             save_user_data(selected_user, user_records, RECORDS_COLLECTION)
                             st.rerun()
 
-                # 【新增防御机制：一键清空脏数据】
                 st.markdown("<br>", unsafe_allow_html=True)
                 if daily.get(meal_key):
                     st.info(f"👉 当前 {meal_type} 已有记录。如果数据有误，您可以直接清空并重新录入。")
@@ -600,7 +623,6 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                         save_user_data(selected_user, user_records, RECORDS_COLLECTION)
                         st.rerun()
 
-                # 【新增防御机制：一键清空脏数据】
                 st.markdown("<br>", unsafe_allow_html=True)
                 if daily.get('exercise'):
                     if st.button("🗑️ 彻底清空今日运动记录", key=f"clear_ex_{selected_user}_{today_str}"):
