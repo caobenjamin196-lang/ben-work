@@ -76,7 +76,7 @@ def inject_dynamic_bg(weekday_index):
                 background-size: cover; background-position: center; background-repeat: no-repeat;
                 opacity: 0.85; z-index: -2;
             }}
-            /* 边缘虚化遮罩：消除拼接感，让四周柔和融入底色 */
+            /* 边缘虚化遮罩 */
             .bg-vignette {{
                 position: fixed; top: 0; left: 0; right: 0; bottom: 0;
                 background: radial-gradient(circle, rgba(247,249,252,0) 20%, rgba(247,249,252,0.95) 100%);
@@ -90,16 +90,13 @@ def inject_dynamic_bg(weekday_index):
 # ================= 全局 CSS 深度优化 =================
 st.markdown("""
 <style>
-    /* 引入圆润可爱的字体集 */
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=Varela+Round&display=swap');
     
-    /* 针对普通文本应用新字体，但避开系统内置的图标，彻底修复 upload / arrow 重叠乱码的 Bug */
     html, body, div:not([class*="icon"]), p, span:not([class*="icon"]), label {
         font-family: 'Nunito', 'Varela Round', 'PingFang SC', 'Microsoft YaHei', sans-serif;
         color: #1f2937; 
     }
     
-    /* 强制恢复系统图标字体 */
     .material-symbols-rounded, .material-icons, [data-testid="stIconMaterial"] {
         font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
     }
@@ -111,14 +108,8 @@ st.markdown("""
         font-family: 'Nunito', 'Varela Round', 'PingFang SC', sans-serif;
     }
 
-    p, .stMarkdown {
-        font-weight: 700; 
-    }
-
-    strong {
-        font-weight: 900 !important;
-        color: #065f46 !important; 
-    }
+    p, .stMarkdown { font-weight: 700; }
+    strong { font-weight: 900 !important; color: #065f46 !important; }
 
     .stApp > header { background-color: transparent !important; }
     
@@ -140,7 +131,6 @@ st.markdown("""
     div[data-testid="stMetricValue"] { color: #059669; font-weight: 900 !important; font-size: 2.3rem !important;}
     div[data-testid="stMetricLabel"] { font-weight: 800 !important; color: #4b5563 !important; }
     
-    /* 👑 果冻 3D 质感按钮设计 */
     .stButton > button, [data-testid="stFileUploader"] button {
         background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
         color: white !important; 
@@ -184,7 +174,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 注入边角装饰图
 if dog_gif_b64:
     st.markdown(f'<img src="data:image/gif;base64,{dog_gif_b64}" class="bg-pet-left">', unsafe_allow_html=True)
 if dog1_jpg_b64:
@@ -261,7 +250,7 @@ USERS_COLLECTION = "users"
 RECORDS_COLLECTION = "records"
 
 def load_data(collection_name):
-    """从云端拉取整个集合，转为字典格式"""
+    """拉取全局基础用户配置"""
     try:
         docs = db.collection(collection_name).stream()
         return {doc.id: doc.to_dict() for doc in docs}
@@ -270,25 +259,23 @@ def load_data(collection_name):
         return {}
 
 def save_user_data(user_id, user_data, collection_name):
-    """仅将当前用户的数据同步到云端，避免覆盖其他用户的数据"""
+    """【隔离写入】：只把当前用户的数据安全地盖到他的专属文档上"""
     try:
         db.collection(collection_name).document(user_id).set(user_data)
     except Exception as e:
         st.sidebar.error(f"云端同步失败: {e}")
 
-# 初始化载入数据
+# 初始化拉取用户配置 (records 日志数据放到下方单独按需拉取，防止内存串流)
 users = load_data(USERS_COLLECTION)
-records = load_data(RECORDS_COLLECTION)
 
 # ================= 时区与日期计算 =================
 def get_user_timezone_date(username, u_data):
-    """【强制时区绑定】：根据名字强制锁定，无视档案里的脏数据"""
+    """【强制时区绑定】"""
     if username == "本比" or username.lower() == "ben":
         tz_str = "America/Montevideo"
     elif username == "宝比":
         tz_str = "Asia/Shanghai"
     else:
-        # 如果是其他人，读取档案时区或默认中国时区
         tz_str = u_data.get("timezone", "Asia/Shanghai")
             
     try:
@@ -417,10 +404,6 @@ with st.sidebar:
                 if st.button(f"🗑️ 永久删除 '{target_to_edit}'", type="primary"):
                     db.collection(USERS_COLLECTION).document(target_to_edit).delete()
                     db.collection(RECORDS_COLLECTION).document(target_to_edit).delete()
-                    
-                    if target_to_edit in users: del users[target_to_edit]
-                    if target_to_edit in records: del records[target_to_edit]
-                    
                     st.success("已删除该档案！")
                     st.rerun()
 
@@ -430,17 +413,20 @@ if not users:
 
 if selected_user and selected_user != "➕ 新建身体档案...":
     u_data = users[selected_user]
-    
-    # 获取强绑定后的正确日期
     today_str, current_weekday, today_date = get_user_timezone_date(selected_user, u_data)
     inject_dynamic_bg(current_weekday)
-    
+
+    # ================= 【核心修复：绝对数据隔离拉取】 =================
+    # 不再全局读取所有人日志，只定向拉取当前用户的日志。彻底杜绝内存串流。
+    user_record_doc = db.collection(RECORDS_COLLECTION).document(selected_user).get()
+    user_records = user_record_doc.to_dict() if user_record_doc.exists else {}
+
     # ================= 每周一更新体重提醒 =================
     if current_weekday == 0:
         st.warning(f"📅 **今天是{selected_user}时区的周一！** 新的一周，为了让 AI 监控更精准，请记录一下最新体重吧！")
         with st.expander("⚖️ 更新本周体重", expanded=False):
-            new_weight = st.number_input("最新空腹体重 (kg)", value=float(u_data['weight']), step=0.1, key=f"wt_{selected_user}")
-            if st.button("更新并重算计划", key=f"btn_wt_{selected_user}"):
+            new_weight = st.number_input("最新空腹体重 (kg)", value=float(u_data['weight']), step=0.1, key=f"wt_{selected_user}_{today_str}")
+            if st.button("更新并重算计划", key=f"btn_wt_{selected_user}_{today_str}"):
                 bmr, tdee, target, macros = calculate_metrics(u_data['gender'], new_weight, u_data['height'], u_data['age'], u_data['activity'], u_data.get('goal', '减脂'))
                 users[selected_user].update({"weight": new_weight, "bmr": bmr, "tdee": tdee, "target": target, "macros": macros})
                 save_user_data(selected_user, users[selected_user], USERS_COLLECTION)
@@ -458,7 +444,7 @@ if selected_user and selected_user != "➕ 新建身体档案...":
         st.markdown("### 🌸 生理期智能追踪")
         if p_data['is_active']:
             st.error("🩸 **您当前正处于生理期。** AI 营养师已自动介入，为您增加温暖热量预算，请注意保暖！")
-            if st.button("✅ 标记本次大姨妈已结束", key=f"p_end_{selected_user}"):
+            if st.button("✅ 标记本次大姨妈已结束", key=f"p_end_{selected_user}_{today_str}"):
                 p_data['is_active'] = False
                 p_data['last_end'] = today_str
                 users[selected_user]['period'] = p_data
@@ -478,7 +464,7 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                 else:
                     st.error(f"🚨 **到期确认**：预计生理期已经到了 (已延迟 {abs(days_left)} 天)。您的姨妈来了吗？")
                 
-                if st.button("🩸 是的，大姨妈今天来了", key=f"p_start_{selected_user}"):
+                if st.button("🩸 是的，大姨妈今天来了", key=f"p_start_{selected_user}_{today_str}"):
                     p_data['is_active'] = True
                     p_data['last_start'] = today_str
                     users[selected_user]['period'] = p_data
@@ -486,7 +472,7 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                     st.rerun()
             else:
                 st.info("首次使用，当您大姨妈来临之际请在此标记，系统将自动开启下月的循环提醒。")
-                if st.button("🩸 标记今天生理期开始", key=f"p_first_{selected_user}"):
+                if st.button("🩸 标记今天生理期开始", key=f"p_first_{selected_user}_{today_str}"):
                     p_data['is_active'] = True
                     p_data['last_start'] = today_str
                     users[selected_user]['period'] = p_data
@@ -495,14 +481,12 @@ if selected_user and selected_user != "➕ 新建身体档案...":
             is_period = False
 
     # ================= 跨天重置与保存逻辑 =================
-    if selected_user not in records: records[selected_user] = {}
-    if today_str not in records[selected_user]:
-        records[selected_user][today_str] = {"breakfast": None, "lunch": None, "dinner": None, "snacks": None, "exercise": None, "daily_nutrition_analysis": None}
-    if "snacks" not in records[selected_user][today_str]: records[selected_user][today_str]["snacks"] = None
+    if today_str not in user_records:
+        user_records[today_str] = {"breakfast": None, "lunch": None, "dinner": None, "snacks": None, "exercise": None, "daily_nutrition_analysis": None}
+    if "snacks" not in user_records[today_str]: user_records[today_str]["snacks"] = None
     
-    daily = records[selected_user][today_str]
+    daily = user_records[today_str]
     target = u_data['target']
-    
     if is_period: target += 150 
 
     consumed = sum([daily[k].get('calories', 0) for k in ['breakfast', 'lunch', 'dinner', 'snacks'] if daily[k]])
@@ -551,7 +535,7 @@ if selected_user and selected_user != "➕ 新建身体档案...":
             tab1, tab2 = st.tabs(["🍽️ 记饮食", "🏃 记运动"])
             
             with tab1:
-                meal_type = st.radio("当前餐段", ["早餐", "午餐", "晚餐", "零食/加餐"], horizontal=True, key=f"radio_meal_{selected_user}")
+                meal_type = st.radio("当前餐段", ["早餐", "午餐", "晚餐", "零食/加餐"], horizontal=True, key=f"radio_meal_{selected_user}_{today_str}")
                 meal_key = {"早餐": "breakfast", "午餐": "lunch", "晚餐": "dinner", "零食/加餐": "snacks"}[meal_type]
                 
                 uploaded_imgs = st.file_uploader("上传美食照片 (可多图上传，支持 500MB 以内)", type=["jpg", "png", "webp"], accept_multiple_files=True, key=f"imgs_{selected_user}_{meal_type}_{today_str}")
@@ -587,8 +571,18 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                                 res = {"food": "解析失败", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "analysis": f"API 错误: {str(e)}"}
                             
                             daily[meal_key] = res
-                            save_user_data(selected_user, records[selected_user], RECORDS_COLLECTION)
+                            save_user_data(selected_user, user_records, RECORDS_COLLECTION)
                             st.rerun()
+
+                # 【新增防御机制：一键清空脏数据】
+                st.markdown("<br>", unsafe_allow_html=True)
+                if daily.get(meal_key):
+                    st.info(f"👉 当前 {meal_type} 已有记录。如果数据有误，您可以直接清空并重新录入。")
+                    if st.button(f"🗑️ 彻底清空当前 {meal_type} 记录", key=f"clear_{selected_user}_{meal_type}_{today_str}"):
+                        daily[meal_key] = None
+                        save_user_data(selected_user, user_records, RECORDS_COLLECTION)
+                        st.success("清理成功！")
+                        st.rerun()
             
             with tab2:
                 exercise_input = st.text_area("今天做了什么运动？", height=100, key=f"txt_ex_{selected_user}_{today_str}")
@@ -603,7 +597,15 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                             res = {"burned": 0, "analysis": "错误"}
                         
                         daily['exercise'] = {"text": exercise_input, "burned_calories": res.get("burned", 0), "analysis": res.get("analysis", "")}
-                        save_user_data(selected_user, records[selected_user], RECORDS_COLLECTION)
+                        save_user_data(selected_user, user_records, RECORDS_COLLECTION)
+                        st.rerun()
+
+                # 【新增防御机制：一键清空脏数据】
+                st.markdown("<br>", unsafe_allow_html=True)
+                if daily.get('exercise'):
+                    if st.button("🗑️ 彻底清空今日运动记录", key=f"clear_ex_{selected_user}_{today_str}"):
+                        daily['exercise'] = None
+                        save_user_data(selected_user, user_records, RECORDS_COLLECTION)
                         st.rerun()
 
     with col_right:
@@ -631,7 +633,7 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                         period_note = "【特别提醒：该女生正处于生理期】" if is_period else ""
                         prompt = f"用户今日饮食：{str(meals_dict)}。目标:{u_data.get('goal','减脂')}。{period_note} 请作为高级营养师分析今天营养摄入比例是否合理，重点指出缺乏的微量元素/宏量元素，并给出明确的补足建议。"
                         daily['daily_nutrition_analysis'] = safe_generate_content(prompt)
-                        save_user_data(selected_user, records[selected_user], RECORDS_COLLECTION)
+                        save_user_data(selected_user, user_records, RECORDS_COLLECTION)
                         st.rerun()
             
             if daily.get('daily_nutrition_analysis'):
@@ -642,24 +644,21 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     st.markdown("---")
     st.markdown("### 🕰️ 往日餐饮补录与修改")
     with st.expander("点击展开：补录遗漏数据或修改历史记录", expanded=False):
-        # 允许选择今天之前的任意日期进行补录或修改
         max_date = today_date - datetime.timedelta(days=1)
         default_date = max_date
         
-        sel_date_obj = st.date_input("📅 选择要查看或补录的日期", value=default_date, max_value=max_date, key=f"date_input_{selected_user}")
+        sel_date_obj = st.date_input("📅 选择要查看或补录的日期", value=default_date, max_value=max_date, key=f"date_input_{selected_user}_{today_str}")
         
         if sel_date_obj:
             sel_date = sel_date_obj.strftime("%Y-%m-%d")
             
-            # 如果这一天在数据库里完全空白，则自动生成一个干净的空模板以便补录
-            if sel_date not in records[selected_user]:
-                records[selected_user][sel_date] = {"breakfast": None, "lunch": None, "dinner": None, "snacks": None, "exercise": None, "daily_nutrition_analysis": None}
+            if sel_date not in user_records:
+                user_records[sel_date] = {"breakfast": None, "lunch": None, "dinner": None, "snacks": None, "exercise": None, "daily_nutrition_analysis": None}
                 
-            archived_data = records[selected_user][sel_date]
+            archived_data = user_records[sel_date]
             st.caption(f"正在查看或补录 **{sel_date}** 的档案记录")
             
             for m_key, m_name in [("breakfast", "早餐"), ("lunch", "午餐"), ("dinner", "晚餐"), ("snacks", "零食")]:
-                # 确保字典层级存在以防防报错
                 if not archived_data.get(m_key):
                     archived_data[m_key] = {}
                     
@@ -672,12 +671,12 @@ if selected_user and selected_user != "➕ 新建身体档案...":
                     e_car = c_car.number_input("碳水", value=int(archived_data[m_key].get('carbs', 0)), key=f"eca_{selected_user}_{sel_date}_{m_key}", label_visibility="collapsed")
                     e_fat = c_fat.number_input("脂肪", value=int(archived_data[m_key].get('fat', 0)), key=f"efa_{selected_user}_{sel_date}_{m_key}", label_visibility="collapsed")
                     
-                    if c_btn.button("💾 保存修改", key=f"btn_{selected_user}_{sel_date}_{m_key}"):
+                    if c_btn.button("💾 保存修改", key=f"btn_save_{selected_user}_{sel_date}_{m_key}"):
                         if e_food or e_cal > 0:
-                            records[selected_user][sel_date][m_key].update({
+                            user_records[sel_date][m_key].update({
                                 'food': e_food, 'calories': e_cal, 'protein': e_pro, 'carbs': e_car, 'fat': e_fat
                             })
-                            save_user_data(selected_user, records[selected_user], RECORDS_COLLECTION)
+                            save_user_data(selected_user, user_records, RECORDS_COLLECTION)
                             st.success(f"✅ {sel_date} 的 {m_name} 数据已成功记录！")
                             st.rerun()
                         else:
@@ -687,8 +686,8 @@ if selected_user and selected_user != "➕ 新建身体档案...":
     # ================= 月度终极报告 =================
     st.markdown("---")
     st.markdown("### 📅 月度身材与饮食复盘")
-    if st.button("📈 生成当月 AI 深度诊断报告", key=f"btn_report_{selected_user}"):
-        all_data = records.get(selected_user, {})
+    if st.button("📈 生成当月 AI 深度诊断报告", key=f"btn_report_{selected_user}_{today_str}"):
+        all_data = user_records
         if len(all_data) < 3: 
             st.warning("记录少于 3 天，积累更多数据再来生成报告会更准哦！")
         else:
